@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import process from "node:process";
 import ts from "typescript";
+import { parseSourceFile, type ParserResult } from "./parser.js";
 
 async function main(args: string[]): Promise<i32> {
   // TODO: Check these
@@ -18,12 +19,16 @@ async function main(args: string[]): Promise<i32> {
     ts.ScriptKind.TS,
   );
 
-  for (const child of sourceFile.getChildren()) {
-    console.info(child.getText());
+  let result: ParserResult = undefined!;
+
+  try {
+    result = parseSourceFile(sourceFile);
+  } catch (error) {
+    console.error(error);
+    return 1;
   }
 
-  const printer: ts.Printer = ts.createPrinter();
-  console.log(printer.printFile(sourceFile));
+  await fs.writeFile(outputFilePath, result.output, "utf8");
 
   return 0;
 }

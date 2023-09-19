@@ -1,0 +1,11 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Hello World",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npx tsx ./src/main.ts ./examples/hello-world/main.ts ./tmp/hello-world.cpp"
+    }
+  ]
+}
