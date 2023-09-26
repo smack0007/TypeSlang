@@ -1,19 +1,11 @@
 import { EOL } from "node:os";
 import ts from "typescript";
+import { StringBuilder } from "./stringBuilder.js";
 
 class ParserContext {
-  public output = "";
+  public output = new StringBuilder();
 
   constructor(public readonly sourceFile: ts.SourceFile) {}
-
-  public append(value: string): void {
-    this.output += value;
-  }
-
-  public appendLine(value: string = ""): void {
-    this.append(value);
-    this.append(EOL);
-  }
 }
 
 export interface ParserResult {
@@ -21,10 +13,15 @@ export interface ParserResult {
 }
 
 export class ParserError extends Error {
-  constructor(context: ParserContext, public readonly node: ts.Node, message: string) {
-    const { line, character } = context.sourceFile.getLineAndCharacterOfPosition(
-      node.getStart(context.sourceFile),
-    );
+  constructor(
+    context: ParserContext,
+    public readonly node: ts.Node,
+    message: string,
+  ) {
+    const { line, character } = context.sourceFile
+      .getLineAndCharacterOfPosition(
+        node.getStart(context.sourceFile),
+      );
 
     super(`(${line}, ${character}): ${message}`);
   }
@@ -43,17 +40,22 @@ export function parseSourceFile(sourceFile: ts.SourceFile): ParserResult {
     parseTopLevelStatement(context, statement);
   }
 
-  return context;
+  return {
+    output: context.output.toString(),
+  };
 }
 
 function writePreamble(context: ParserContext): void {
-  context.appendLine(`#include "stdio.h"`);
-  context.appendLine(`#include "stdint.h"`);
-  context.appendLine(`typedef int32_t i32;`);
-  context.appendLine();
+  context.output.appendLine(`#include "stdio.h"`);
+  context.output.appendLine(`#include "stdint.h"`);
+  context.output.appendLine(`typedef int32_t i32;`);
+  context.output.appendLine();
 }
 
-function parseTopLevelStatement(context: ParserContext, statement: ts.Statement): void {
+function parseTopLevelStatement(
+  context: ParserContext,
+  statement: ts.Statement,
+): void {
   switch (statement.kind) {
     case ts.SyntaxKind.ImportDeclaration:
       parseImportDeclaration(context, statement as ts.ImportDeclaration);
@@ -67,7 +69,9 @@ function parseTopLevelStatement(context: ParserContext, statement: ts.Statement)
       throw new ParserError(
         context,
         statement,
-        `Failed to parse ${nodeKindString(statement)} in ${parseTopLevelStatement.name}.`,
+        `Failed to parse ${
+          nodeKindString(statement)
+        } in ${parseTopLevelStatement.name}.`,
       );
   }
 }
@@ -87,7 +91,9 @@ function parseImportDeclaration(
   throw new ParserError(
     context,
     importDeclaration,
-    `Failed to parse ${nodeKindString(importDeclaration)} in ${parseImportDeclaration.name}.`,
+    `Failed to parse ${
+      nodeKindString(importDeclaration)
+    } in ${parseImportDeclaration.name}.`,
   );
 }
 
@@ -96,7 +102,11 @@ function parseFunctionDeclaration(
   functionDeclaration: ts.FunctionDeclaration,
 ): void {
   if (!functionDeclaration.name) {
-    throw new ParserError(context, functionDeclaration, `Expected function name to be defined.`);
+    throw new ParserError(
+      context,
+      functionDeclaration,
+      `Expected function name to be defined.`,
+    );
   }
 
   if (
@@ -111,7 +121,7 @@ function parseFunctionDeclaration(
     );
   }
 
-  context.appendLine(
+  context.output.appendLine(
     `${functionDeclaration.type.typeName.escapedText} ${functionDeclaration.name.escapedText}() {`,
   );
 
@@ -121,11 +131,18 @@ function parseFunctionDeclaration(
     }
   }
 
-  context.appendLine(`}`);
+  context.output.appendLine(`}`);
 }
 
-function parseFunctionLevelStatement(context: ParserContext, statement: ts.Statement): void {
+function parseFunctionLevelStatement(
+  context: ParserContext,
+  statement: ts.Statement,
+): void {
   switch (statement.kind) {
+    case ts.SyntaxKind.ExpressionStatement:
+      parseExpressionStatement(context, statement as ts.ExpressionStatement);
+      break;
+
     case ts.SyntaxKind.ReturnStatement:
       parseReturnStatement(context, statement as ts.ReturnStatement);
       break;
@@ -134,36 +151,121 @@ function parseFunctionLevelStatement(context: ParserContext, statement: ts.State
       throw new ParserError(
         context,
         statement,
-        `Failed to parse ${nodeKindString(statement)} in ${parseFunctionLevelStatement.name}.`,
+        `Failed to parse ${
+          nodeKindString(statement)
+        } in ${parseFunctionLevelStatement.name}.`,
       );
   }
 }
 
-function parseReturnStatement(context: ParserContext, returnStatement: ts.ReturnStatement): void {
+function parseExpressionStatement(
+  context: ParserContext,
+  expressionStatement: ts.ExpressionStatement,
+): void {
+  parseExpression(context, expressionStatement.expression);
+  context.output.appendLine(";");
+}
+
+function parseReturnStatement(
+  context: ParserContext,
+  returnStatement: ts.ReturnStatement,
+): void {
   if (returnStatement.expression) {
-    context.append("return ");
+    context.output.append("return ");
     parseExpression(context, returnStatement.expression);
-    context.appendLine(";");
+    context.output.appendLine(";");
   } else {
-    context.appendLine("return;");
+    context.output.appendLine("return;");
   }
 }
 
-function parseExpression(context: ParserContext, expression: ts.Expression): void {
+function parseExpression(
+  context: ParserContext,
+  expression: ts.Expression,
+): void {
   switch (expression.kind) {
+    case ts.SyntaxKind.CallExpression:
+      parseCallExpression(context, expression as ts.CallExpression);
+      break;
+
+    case ts.SyntaxKind.Identifier:
+      parseIdentifier(context, expression as ts.Identifier);
+      break;
+
     case ts.SyntaxKind.NumericLiteral:
       parseNumericLiteral(context, expression as ts.NumericLiteral);
+      break;
+
+    case ts.SyntaxKind.PropertyAccessExpression:
+      parsePropertyAccessExpression(
+        context,
+        expression as ts.PropertyAccessExpression,
+      );
+      break;
+
+    case ts.SyntaxKind.StringLiteral:
+      parseStringLiteral(context, expression as ts.StringLiteral);
       break;
 
     default:
       throw new ParserError(
         context,
         expression,
-        `Failed to parse ${nodeKindString(expression)} in ${parseExpression.name}.`,
+        `Failed to parse ${
+          nodeKindString(expression)
+        } in ${parseExpression.name}.`,
       );
   }
 }
 
-function parseNumericLiteral(context: ParserContext, numcericLiteral: ts.NumericLiteral): void {
-  context.append(numcericLiteral.text);
+function parseCallExpression(
+  context: ParserContext,
+  callExpression: ts.CallExpression,
+): void {
+  parseExpression(context, callExpression.expression);
+  context.output.append("(");
+
+  for (const argument of callExpression.arguments) {
+    parseExpression(context, argument);
+  }
+
+  context.output.append(")");
+}
+
+function parsePropertyAccessExpression(
+  context: ParserContext,
+  propertyAccessExpression: ts.PropertyAccessExpression,
+): void {
+  parseExpression(context, propertyAccessExpression.expression);
+  context.output.append(".");
+  parseMemberName(context, propertyAccessExpression.name);
+}
+
+function parseMemberName(
+  context: ParserContext,
+  memberName: ts.MemberName,
+): void {
+  // TODO: Implement for ts.PrivateIdentifier
+  parseIdentifier(context, memberName as ts.Identifier);
+}
+
+function parseIdentifier(
+  context: ParserContext,
+  identifier: ts.Identifier,
+): void {
+  context.output.append(identifier.text);
+}
+
+function parseNumericLiteral(
+  context: ParserContext,
+  numcericLiteral: ts.NumericLiteral,
+): void {
+  context.output.append(numcericLiteral.text);
+}
+
+function parseStringLiteral(
+  context: ParserContext,
+  stringLiteral: ts.StringLiteral,
+): void {
+  context.output.append(`"${stringLiteral.text}"`);
 }
