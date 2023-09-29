@@ -1,20 +1,22 @@
-import { EOL } from "node:os";
+import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { StringBuilder } from "./stringBuilder.js";
+import { StringBuilder } from "../../stringBuilder.js";
 
-class ParserContext {
+class EmitContext {
   public output = new StringBuilder();
 
   constructor(public readonly sourceFile: ts.SourceFile) {}
 }
 
-export interface ParserResult {
+export interface EmitResult {
   readonly output: string;
 }
 
-export class ParserError extends Error {
+export class EmitError extends Error {
   constructor(
-    context: ParserContext,
+    context: EmitContext,
     public readonly node: ts.Node,
     message: string,
   ) {
@@ -31,13 +33,13 @@ function nodeKindString(node: ts.Node): string {
   return ts.SyntaxKind[node.kind];
 }
 
-export function parseSourceFile(sourceFile: ts.SourceFile): ParserResult {
-  const context = new ParserContext(sourceFile);
+export async function emit(sourceFile: ts.SourceFile): Promise<EmitResult> {
+  const context = new EmitContext(sourceFile);
 
-  writePreamble(context);
+  await emitPreamble(context);
 
   for (const statement of sourceFile.statements) {
-    parseTopLevelStatement(context, statement);
+    emitTopLevelStatement(context, statement);
   }
 
   return {
@@ -45,39 +47,36 @@ export function parseSourceFile(sourceFile: ts.SourceFile): ParserResult {
   };
 }
 
-function writePreamble(context: ParserContext): void {
-  context.output.appendLine(`#include "stdio.h"`);
-  context.output.appendLine(`#include "stdint.h"`);
-  context.output.appendLine(`typedef int32_t i32;`);
-  context.output.appendLine();
+async function emitPreamble(context: EmitContext): Promise<void> {
+  context.output.appendLine("#include <tscc/runtime.cpp>");
 }
 
-function parseTopLevelStatement(
-  context: ParserContext,
+function emitTopLevelStatement(
+  context: EmitContext,
   statement: ts.Statement,
 ): void {
   switch (statement.kind) {
     case ts.SyntaxKind.ImportDeclaration:
-      parseImportDeclaration(context, statement as ts.ImportDeclaration);
+      emitImportDeclaration(context, statement as ts.ImportDeclaration);
       break;
 
     case ts.SyntaxKind.FunctionDeclaration:
-      parseFunctionDeclaration(context, statement as ts.FunctionDeclaration);
+      emitFunctionDeclaration(context, statement as ts.FunctionDeclaration);
       break;
 
     default:
-      throw new ParserError(
+      throw new EmitError(
         context,
         statement,
         `Failed to parse ${
           nodeKindString(statement)
-        } in ${parseTopLevelStatement.name}.`,
+        } in ${emitTopLevelStatement.name}.`,
       );
   }
 }
 
-function parseImportDeclaration(
-  context: ParserContext,
+function emitImportDeclaration(
+  context: EmitContext,
   importDeclaration: ts.ImportDeclaration,
 ): void {
   if (
@@ -88,21 +87,21 @@ function parseImportDeclaration(
     return;
   }
 
-  throw new ParserError(
+  throw new EmitError(
     context,
     importDeclaration,
     `Failed to parse ${
       nodeKindString(importDeclaration)
-    } in ${parseImportDeclaration.name}.`,
+    } in ${emitImportDeclaration.name}.`,
   );
 }
 
-function parseFunctionDeclaration(
-  context: ParserContext,
+function emitFunctionDeclaration(
+  context: EmitContext,
   functionDeclaration: ts.FunctionDeclaration,
 ): void {
   if (!functionDeclaration.name) {
-    throw new ParserError(
+    throw new EmitError(
       context,
       functionDeclaration,
       `Expected function name to be defined.`,
@@ -114,7 +113,7 @@ function parseFunctionDeclaration(
     !ts.isTypeReferenceNode(functionDeclaration.type) ||
     !ts.isIdentifier(functionDeclaration.type.typeName)
   ) {
-    throw new ParserError(
+    throw new EmitError(
       context,
       functionDeclaration,
       `Expected function return type to be defined for ${functionDeclaration.name.escapedText}.`,
@@ -127,144 +126,150 @@ function parseFunctionDeclaration(
 
   if (functionDeclaration.body) {
     for (const statement of functionDeclaration.body.statements) {
-      parseFunctionLevelStatement(context, statement);
+      emitFunctionLevelStatement(context, statement);
     }
   }
 
   context.output.appendLine(`}`);
 }
 
-function parseFunctionLevelStatement(
-  context: ParserContext,
+function emitFunctionLevelStatement(
+  context: EmitContext,
   statement: ts.Statement,
 ): void {
   switch (statement.kind) {
     case ts.SyntaxKind.ExpressionStatement:
-      parseExpressionStatement(context, statement as ts.ExpressionStatement);
+      emitExpressionStatement(context, statement as ts.ExpressionStatement);
       break;
 
     case ts.SyntaxKind.ReturnStatement:
-      parseReturnStatement(context, statement as ts.ReturnStatement);
+      emitReturnStatement(context, statement as ts.ReturnStatement);
       break;
 
     default:
-      throw new ParserError(
+      throw new EmitError(
         context,
         statement,
         `Failed to parse ${
           nodeKindString(statement)
-        } in ${parseFunctionLevelStatement.name}.`,
+        } in ${emitFunctionLevelStatement.name}.`,
       );
   }
 }
 
-function parseExpressionStatement(
-  context: ParserContext,
+function emitExpressionStatement(
+  context: EmitContext,
   expressionStatement: ts.ExpressionStatement,
 ): void {
-  parseExpression(context, expressionStatement.expression);
+  emitExpression(context, expressionStatement.expression);
   context.output.appendLine(";");
 }
 
-function parseReturnStatement(
-  context: ParserContext,
+function emitReturnStatement(
+  context: EmitContext,
   returnStatement: ts.ReturnStatement,
 ): void {
   if (returnStatement.expression) {
     context.output.append("return ");
-    parseExpression(context, returnStatement.expression);
+    emitExpression(context, returnStatement.expression);
     context.output.appendLine(";");
   } else {
     context.output.appendLine("return;");
   }
 }
 
-function parseExpression(
-  context: ParserContext,
+function emitExpression(
+  context: EmitContext,
   expression: ts.Expression,
 ): void {
   switch (expression.kind) {
     case ts.SyntaxKind.CallExpression:
-      parseCallExpression(context, expression as ts.CallExpression);
+      emitCallExpression(context, expression as ts.CallExpression);
       break;
 
     case ts.SyntaxKind.Identifier:
-      parseIdentifier(context, expression as ts.Identifier);
+      emitIdentifier(context, expression as ts.Identifier);
       break;
 
     case ts.SyntaxKind.NumericLiteral:
-      parseNumericLiteral(context, expression as ts.NumericLiteral);
+      emitNumericLiteral(context, expression as ts.NumericLiteral);
       break;
 
     case ts.SyntaxKind.PropertyAccessExpression:
-      parsePropertyAccessExpression(
+      emitPropertyAccessExpression(
         context,
         expression as ts.PropertyAccessExpression,
       );
       break;
 
     case ts.SyntaxKind.StringLiteral:
-      parseStringLiteral(context, expression as ts.StringLiteral);
+      emitStringLiteral(context, expression as ts.StringLiteral);
       break;
 
     default:
-      throw new ParserError(
+      throw new EmitError(
         context,
         expression,
         `Failed to parse ${
           nodeKindString(expression)
-        } in ${parseExpression.name}.`,
+        } in ${emitExpression.name}.`,
       );
   }
 }
 
-function parseCallExpression(
-  context: ParserContext,
+function emitCallExpression(
+  context: EmitContext,
   callExpression: ts.CallExpression,
 ): void {
-  parseExpression(context, callExpression.expression);
+  emitExpression(context, callExpression.expression);
   context.output.append("(");
 
-  for (const argument of callExpression.arguments) {
-    parseExpression(context, argument);
+  for (let i = 0; i < callExpression.arguments.length; i++) {
+    const argument = callExpression.arguments[i]!;
+
+    emitExpression(context, argument);
+
+    if (i < callExpression.arguments.length - 1) {
+      context.output.append(", ");
+    }
   }
 
   context.output.append(")");
 }
 
-function parsePropertyAccessExpression(
-  context: ParserContext,
+function emitPropertyAccessExpression(
+  context: EmitContext,
   propertyAccessExpression: ts.PropertyAccessExpression,
 ): void {
-  parseExpression(context, propertyAccessExpression.expression);
+  emitExpression(context, propertyAccessExpression.expression);
   context.output.append(".");
-  parseMemberName(context, propertyAccessExpression.name);
+  emitMemberName(context, propertyAccessExpression.name);
 }
 
-function parseMemberName(
-  context: ParserContext,
+function emitMemberName(
+  context: EmitContext,
   memberName: ts.MemberName,
 ): void {
   // TODO: Implement for ts.PrivateIdentifier
-  parseIdentifier(context, memberName as ts.Identifier);
+  emitIdentifier(context, memberName as ts.Identifier);
 }
 
-function parseIdentifier(
-  context: ParserContext,
+function emitIdentifier(
+  context: EmitContext,
   identifier: ts.Identifier,
 ): void {
   context.output.append(identifier.text);
 }
 
-function parseNumericLiteral(
-  context: ParserContext,
+function emitNumericLiteral(
+  context: EmitContext,
   numcericLiteral: ts.NumericLiteral,
 ): void {
   context.output.append(numcericLiteral.text);
 }
 
-function parseStringLiteral(
-  context: ParserContext,
+function emitStringLiteral(
+  context: EmitContext,
   stringLiteral: ts.StringLiteral,
 ): void {
   context.output.append(`"${stringLiteral.text}"`);

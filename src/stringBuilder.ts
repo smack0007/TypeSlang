@@ -1,3 +1,5 @@
+import { EOL } from "node:os";
+
 export class StringBuilder {
   private data = "";
   private indentLevel = 0;
@@ -10,7 +12,7 @@ export class StringBuilder {
     if (value) {
       this.append(value);
     }
-    this.append("\n");
+    this.append(EOL);
   }
 
   public toString(): string {

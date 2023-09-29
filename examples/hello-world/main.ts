@@ -1,4 +1,4 @@
 function main(): i32 {
-  console.info("Hello World!");
+  console.info("Hello World!", 42);
   return 0;
 }

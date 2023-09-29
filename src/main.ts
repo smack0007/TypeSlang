@@ -1,14 +1,13 @@
 import fs from "node:fs/promises";
 import process from "node:process";
 import ts from "typescript";
-import { parseSourceFile, type ParserResult } from "./parser.js";
+import { emit, type EmitResult } from "./backends/cpp/emit.js";
 
 async function main(args: string[]): Promise<i32> {
   // TODO: Check these
   const inputFilePath = args[0] as string;
   const outputFilePath = args[1] as string;
 
-  console.info(`${inputFilePath} => ${outputFilePath}`);
   const inputFile = await fs.readFile(inputFilePath, "utf8");
 
   const sourceFile: ts.SourceFile = ts.createSourceFile(
@@ -19,10 +18,10 @@ async function main(args: string[]): Promise<i32> {
     ts.ScriptKind.TS,
   );
 
-  let result: ParserResult = undefined!;
+  let result: EmitResult = undefined!;
 
   try {
-    result = parseSourceFile(sourceFile);
+    result = await emit(sourceFile);
   } catch (error) {
     console.error(error);
     return 1;
