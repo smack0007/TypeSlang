@@ -1,4 +1,6 @@
 function main(): i32 {
-  console.info("Hello World!", 42);
+  const message = "Hello World!";
+  let value = 42;
+  console.info(message, value);
   return 0;
 }

@@ -2,10 +2,20 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "type": "npm",
-      "script": "run:hello-world",
+      "label": "Run Hello World",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "type": "shell",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "command": "./cc.sh ./examples/hello-world/main.ts ./tmp/hello-world && ./tmp/hello-world",
       "problemMatcher": [],
-      "label": "Run Hello World"
+      "presentation": {
+        "clear": true
+      }
     }
   ]
 }

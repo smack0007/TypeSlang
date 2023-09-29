@@ -8,20 +8,26 @@ async function main(args: string[]): Promise<i32> {
   const inputFilePath = args[0] as string;
   const outputFilePath = args[1] as string;
 
-  const inputFile = await fs.readFile(inputFilePath, "utf8");
+  const program = ts.createProgram([inputFilePath], {
+    target: ts.ScriptTarget.ES2022,
+  });
+  
+  const typeChecker = program.getTypeChecker();
 
-  const sourceFile: ts.SourceFile = ts.createSourceFile(
-    "main.ts",
-    inputFile,
-    ts.ScriptTarget.ES2022,
-    true,
-    ts.ScriptKind.TS,
+  const sourceFiles = program.getSourceFiles().filter((x) =>
+    !x.isDeclarationFile
   );
 
+  if (sourceFiles.length > 1) {
+    console.error("Multiple source files currently not supported.");
+    return 1;
+  }
+
+  const sourceFile = sourceFiles[0]!;
   let result: EmitResult = undefined!;
 
   try {
-    result = await emit(sourceFile);
+    result = await emit(typeChecker, sourceFile);
   } catch (error) {
     console.error(error);
     return 1;

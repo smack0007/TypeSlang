@@ -1,13 +1,16 @@
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
+import ts, { type Identifier } from "typescript";
 import { StringBuilder } from "../../stringBuilder.js";
 
 class EmitContext {
   public output = new StringBuilder();
 
-  constructor(public readonly sourceFile: ts.SourceFile) {}
+  constructor(
+    public readonly typeChecker: ts.TypeChecker,
+    public readonly sourceFile: ts.SourceFile,
+  ) {}
 }
 
 export interface EmitResult {
@@ -33,8 +36,27 @@ function nodeKindString(node: ts.Node): string {
   return ts.SyntaxKind[node.kind];
 }
 
-export async function emit(sourceFile: ts.SourceFile): Promise<EmitResult> {
-  const context = new EmitContext(sourceFile);
+function getTypeFromNode(context: EmitContext, node: ts.Node): string {
+  let type = context.typeChecker.typeToString(
+    context.typeChecker.getTypeAtLocation(node),
+  );
+
+  if (type === "string" || type.startsWith('"')) {
+    type = "const char*";
+  }
+
+  if (type === "number") {
+    type = "i32";
+  }
+
+  return type;
+}
+
+export async function emit(
+  typeChecker: ts.TypeChecker,
+  sourceFile: ts.SourceFile,
+): Promise<EmitResult> {
+  const context = new EmitContext(typeChecker, sourceFile);
 
   await emitPreamble(context);
 
@@ -146,6 +168,10 @@ function emitFunctionLevelStatement(
       emitReturnStatement(context, statement as ts.ReturnStatement);
       break;
 
+    case ts.SyntaxKind.VariableStatement:
+      emitVariableStatement(context, statement as ts.VariableStatement);
+      break;
+
     default:
       throw new EmitError(
         context,
@@ -175,6 +201,27 @@ function emitReturnStatement(
     context.output.appendLine(";");
   } else {
     context.output.appendLine("return;");
+  }
+}
+
+function emitVariableStatement(
+  context: EmitContext,
+  variableStatement: ts.VariableStatement,
+): void {
+  for (
+    const variableDeclaration of variableStatement.declarationList.declarations
+  ) {
+    const type = getTypeFromNode(context, variableDeclaration);
+    context.output.append(type);
+    context.output.append(" ");
+    emitIdentifier(context, variableDeclaration.name as Identifier);
+
+    if (variableDeclaration.initializer) {
+      context.output.append(" = ");
+      emitExpression(context, variableDeclaration.initializer!);
+    }
+
+    context.output.appendLine(";");
   }
 }
 
