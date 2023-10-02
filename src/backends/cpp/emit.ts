@@ -1,8 +1,6 @@
-import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import ts, { type Identifier } from "typescript";
 import { StringBuilder } from "../../stringBuilder.js";
+import { isFirstCharacterDigit as isFirstCharacterDigit } from "../../utils.js";
 
 class EmitContext {
   public output = new StringBuilder();
@@ -42,14 +40,20 @@ function getTypeFromNode(context: EmitContext, node: ts.Node): string {
   );
 
   if (type === "string" || type.startsWith('"')) {
-    type = "const char*";
+    type = "std::string";
   }
 
-  if (type === "number") {
+  if (type === "number" || isFirstCharacterDigit(type)) {
     type = "i32";
   }
 
   return type;
+}
+
+function typeMustBeConstructed(context: EmitContext, type: string): boolean {
+  return [
+    "std::string",
+  ].includes(type);
 }
 
 export async function emit(
@@ -70,7 +74,7 @@ export async function emit(
 }
 
 async function emitPreamble(context: EmitContext): Promise<void> {
-  context.output.appendLine("#include <tscc/runtime.cpp>");
+  context.output.appendLine("#include <tsccpp/runtime.cpp>");
 }
 
 function emitTopLevelStatement(
@@ -212,13 +216,27 @@ function emitVariableStatement(
     const variableDeclaration of variableStatement.declarationList.declarations
   ) {
     const type = getTypeFromNode(context, variableDeclaration);
-    context.output.append(type);
-    context.output.append(" ");
-    emitIdentifier(context, variableDeclaration.name as Identifier);
 
     if (variableDeclaration.initializer) {
+      context.output.append("auto ");
+      emitIdentifier(context, variableDeclaration.name as Identifier);
       context.output.append(" = ");
-      emitExpression(context, variableDeclaration.initializer!);
+
+      if (typeMustBeConstructed(context, type)) {
+        context.output.append(type);
+        context.output.append("(");
+        emitExpression(context, variableDeclaration.initializer);
+        context.output.append(")");
+      } else {
+        context.output.append("(");
+        context.output.append(type);
+        context.output.append(")");
+        emitExpression(context, variableDeclaration.initializer);
+      }
+    } else {
+      context.output.append(type);
+      context.output.append(" ");
+      emitIdentifier(context, variableDeclaration.name as Identifier);
     }
 
     context.output.appendLine(";");
@@ -230,6 +248,10 @@ function emitExpression(
   expression: ts.Expression,
 ): void {
   switch (expression.kind) {
+    case ts.SyntaxKind.BinaryExpression:
+      emitBinaryExpression(context, expression as ts.BinaryExpression);
+      break;
+
     case ts.SyntaxKind.CallExpression:
       emitCallExpression(context, expression as ts.CallExpression);
       break;
@@ -262,6 +284,33 @@ function emitExpression(
         } in ${emitExpression.name}.`,
       );
   }
+}
+
+function emitBinaryExpression(
+  context: EmitContext,
+  binaryExpression: ts.BinaryExpression,
+): void {
+  emitExpression(context, binaryExpression.left);
+
+  switch (binaryExpression.operatorToken.kind) {
+    case ts.SyntaxKind.AsteriskToken:
+      context.output.append(" * ");
+      break;
+
+    case ts.SyntaxKind.MinusToken:
+      context.output.append(" - ");
+      break;
+
+    case ts.SyntaxKind.PlusToken:
+      context.output.append(" + ");
+      break;
+
+    case ts.SyntaxKind.SlashToken:
+      context.output.append(" / ");
+      break;
+  }
+
+  emitExpression(context, binaryExpression.right);
 }
 
 function emitCallExpression(
@@ -297,15 +346,14 @@ function emitMemberName(
   context: EmitContext,
   memberName: ts.MemberName,
 ): void {
-  // TODO: Implement for ts.PrivateIdentifier
-  emitIdentifier(context, memberName as ts.Identifier);
+  emitIdentifier(context, memberName);
 }
 
 function emitIdentifier(
   context: EmitContext,
-  identifier: ts.Identifier,
+  identifier: ts.Identifier | ts.PrivateIdentifier,
 ): void {
-  context.output.append(identifier.text);
+  context.output.append(identifier.escapedText as string);
 }
 
 function emitNumericLiteral(
