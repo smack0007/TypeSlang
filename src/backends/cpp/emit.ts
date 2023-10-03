@@ -33,7 +33,7 @@ function getTypeFromNode(context: EmitContext, node: ts.Node): string {
   let type = context.typeChecker.typeToString(context.typeChecker.getTypeAtLocation(node));
 
   if (type === "string" || type.startsWith('"')) {
-    type = "std::string";
+    type = "JSString";
   }
 
   if (type === "number" || isFirstCharacterDigit(type)) {
@@ -44,7 +44,11 @@ function getTypeFromNode(context: EmitContext, node: ts.Node): string {
 }
 
 function typeMustBeConstructed(context: EmitContext, type: string): boolean {
-  return ["std::string"].includes(type);
+  return ["JSString"].includes(type);
+}
+
+function typeIsString(type: string): boolean {
+  return type === "JSString";
 }
 
 export async function emit(
@@ -177,7 +181,7 @@ function emitBlock(context: EmitContext, block: ts.Block): void {
     emitFunctionLevelStatement(context, statement);
   }
 
-  context.output.appendLine("}");
+  context.output.append("}");
 }
 
 function emitExpressionStatement(
@@ -191,13 +195,14 @@ function emitExpressionStatement(
 function emitIfStatement(context: EmitContext, ifStatement: ts.IfStatement): void {
   context.output.append("if (");
   emitExpression(context, ifStatement.expression);
-  context.output.appendLine(") ");
+  context.output.append(") ");
   emitFunctionLevelStatement(context, ifStatement.thenStatement);
 
   if (ifStatement.elseStatement) {
     context.output.append(" else ");
     emitFunctionLevelStatement(context, ifStatement.elseStatement);
   }
+  context.output.appendLine();
 }
 
 function emitReturnStatement(context: EmitContext, returnStatement: ts.ReturnStatement): void {
@@ -225,7 +230,14 @@ function emitVariableStatement(
       if (typeMustBeConstructed(context, type)) {
         context.output.append(type);
         context.output.append("(");
-        emitExpression(context, variableDeclaration.initializer);
+        if (typeIsString(type) && variableDeclaration.initializer.kind === ts.SyntaxKind.StringLiteral) {
+          emitStringLiteral(context, variableDeclaration.initializer as ts.StringLiteral, {
+            withStringLength: true
+          });
+        } else {
+          emitExpression(context, variableDeclaration.initializer);
+        }
+
         context.output.append(")");
       } else {
         context.output.append("(");
@@ -361,6 +373,19 @@ function emitNumericLiteral(context: EmitContext, numcericLiteral: ts.NumericLit
   context.output.append(numcericLiteral.text);
 }
 
-function emitStringLiteral(context: EmitContext, stringLiteral: ts.StringLiteral): void {
+interface EmitStringLiteralOptions {
+  withStringLength?: boolean;
+}
+
+function emitStringLiteral(
+  context: EmitContext,
+  stringLiteral: ts.StringLiteral,
+  options: EmitStringLiteralOptions = {}
+): void {
   context.output.append(`"${stringLiteral.text}"`);
+
+  if (options.withStringLength) {
+    context.output.append(", ");
+    context.output.append(stringLiteral.text.length.toString());
+  }
 }
