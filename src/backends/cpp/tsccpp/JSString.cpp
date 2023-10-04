@@ -2,55 +2,59 @@
 #include <fmt/format.h>
 
 class JSString {
-public:
-  const char* data;
-  size_t length;
+  const char* _data;
+  size_t _length;
 
+public:
   JSString(const char* data) {
-    this->data = data;
-    this->length = strlen(data);
+    this->_data = data;
+    this->_length = strlen(data);
   }
   
   JSString(const char* data, size_t length) {
-    this->data = data;
-    this->length = length;
+    this->_data = data;
+    this->_length = length;
   }
 
   JSString(const JSString& source) {
-    this->data = source.data;
-    this->length = source.length;
+    this->_data = source._data;
+    this->_length = source._length;
   }
 
   JSString(JSString&& source) {
-    this->data = source.data;
-    this->length = source.length;
+    this->_data = source._data;
+    this->_length = source._length;
   }
-
-  // operator char*() {
-  //   return this->data;
-  // }
 
   JSString operator+(const char* otherData) {
     size_t otherLength = strlen(otherData);
-    size_t newLength = this->length + otherLength;
+    size_t newLength = this->_length + otherLength;
     char* newData = new char[newLength + 1];
 
-    strncpy(newData, this->data, this->length);
-    strncpy(newData + this->length, otherData, otherLength);
+    strncpy(newData, this->_data, this->_length);
+    strncpy(newData + this->_length, otherData, otherLength);
     newData[newLength] = '\0';
 
     return JSString(newData, newLength);
   }
 
   JSString operator+(JSString& other) {
-    size_t newLength = this->length + other.length;
+    size_t newLength = this->_length + other._length;
     char* newData = new char[newLength + 1];
 
-    strncpy(newData, this->data, this->length);
-    strncpy(newData + this->length, other.data, other.length);
+    strncpy(newData, this->_data, this->_length);
+    strncpy(newData + this->_length, other._data, other._length);
     newData[newLength] = '\0';
 
     return JSString(newData, newLength);
+  }
+
+  const char* data() const {
+    return this->_data;
+  }
+
+  size_t length() const {
+    return this->_length;
   }
 };
 
@@ -64,6 +68,6 @@ struct fmt::formatter<JSString>
 
   template<typename FormatContext>
   auto format(JSString const& string, FormatContext& ctx) {
-    return fmt::format_to(ctx.out(), "{0}", string.data);
+    return fmt::format_to(ctx.out(), "{0}", string.data());
   }
 };
