@@ -1,6 +1,9 @@
 import ts, { type Identifier } from "typescript";
 import { StringBuilder } from "../../stringBuilder.js";
-import { isFirstCharacterDigit as isFirstCharacterDigit } from "../../utils.js";
+import {
+  hasFlag,
+  isFirstCharacterDigit as isFirstCharacterDigit,
+} from "../../utils.js";
 
 export enum EmitScope {
   None,
@@ -17,6 +20,7 @@ export enum EmitScope {
   Expression,
   BinaryExpression,
   CallExpression,
+  CallExpressionExpression,
   CallExpressionArguments,
   PropertyAccessExpression,
   MemberName,
@@ -60,14 +64,14 @@ class EmitContext {
     }
   }
 
-  public getFirstScopeOfType(scopes: EmitScope[]): EmitScope | null {
+  public hasAncestorScope(scope: EmitScope): boolean {
     for (let i = this.scopeStack.length - 1; i >= 0; i -= 1) {
-      if (scopes.includes(this.scopeStack[i]!)) {
-        return this.scopeStack[i]!;
+      if (this.scopeStack[i] === scope) {
+        return true;
       }
     }
 
-    return null;
+    return false;
   }
 }
 
@@ -472,7 +476,10 @@ function emitCallExpression(
   callExpression: ts.CallExpression,
 ): void {
   context.withScope(EmitScope.CallExpression, () => {
-    emitExpression(context, callExpression.expression);
+    context.withScope(EmitScope.CallExpressionExpression, () => {
+      emitExpression(context, callExpression.expression);
+    });
+
     context.output.append("(");
 
     context.withScope(EmitScope.CallExpressionArguments, () => {
@@ -502,12 +509,7 @@ function emitPropertyAccessExpression(
 
     // NOTE: Properties are not supported in C++ so we have to call
     // a method.
-    if (
-      context.getFirstScopeOfType([
-        EmitScope.CallExpression,
-        EmitScope.CallExpressionArguments,
-      ]) !== EmitScope.CallExpression
-    ) {
+    if (!context.hasAncestorScope(EmitScope.CallExpressionExpression)) {
       context.output.append("()");
     }
   });

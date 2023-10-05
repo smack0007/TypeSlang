@@ -7,54 +7,54 @@ class JSString {
 
 public:
   JSString(const char* data) {
-    this->_data = data;
-    this->_length = strlen(data);
+    _data = data;
+    _length = strlen(data);
   }
   
   JSString(const char* data, size_t length) {
-    this->_data = data;
-    this->_length = length;
+    _data = data;
+    _length = length;
   }
 
   JSString(const JSString& source) {
-    this->_data = source._data;
-    this->_length = source._length;
+    _data = source._data;
+    _length = source._length;
   }
 
   JSString(JSString&& source) {
-    this->_data = source._data;
-    this->_length = source._length;
+    _data = source._data;
+    _length = source._length;
   }
 
   JSString operator+(const char* otherData) {
     size_t otherLength = strlen(otherData);
-    size_t newLength = this->_length + otherLength;
+    size_t newLength = _length + otherLength;
     char* newData = new char[newLength + 1];
 
-    strncpy(newData, this->_data, this->_length);
-    strncpy(newData + this->_length, otherData, otherLength);
+    strncpy(newData, _data, _length);
+    strncpy(newData + _length, otherData, otherLength);
     newData[newLength] = '\0';
 
     return JSString(newData, newLength);
   }
 
   JSString operator+(JSString& other) {
-    size_t newLength = this->_length + other._length;
+    size_t newLength = _length + other._length;
     char* newData = new char[newLength + 1];
 
-    strncpy(newData, this->_data, this->_length);
-    strncpy(newData + this->_length, other._data, other._length);
+    strncpy(newData, _data, _length);
+    strncpy(newData + _length, other._data, other._length);
     newData[newLength] = '\0';
 
     return JSString(newData, newLength);
   }
 
   const char* data() const {
-    return this->_data;
+    return _data;
   }
 
   size_t length() const {
-    return this->_length;
+    return _length;
   }
 };
 
