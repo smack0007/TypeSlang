@@ -125,7 +125,7 @@ export async function emit(typeChecker: ts.TypeChecker, sourceFile: ts.SourceFil
 }
 
 async function emitPreamble(context: EmitContext): Promise<void> {
-  context.output.appendLine("#include <tsccpp/runtime.cpp>");
+  context.output.appendLine("#include <TypeSlang/runtime.cpp>");
 }
 
 function emitTopLevelStatement(context: EmitContext, statement: ts.Statement): void {
@@ -188,6 +188,7 @@ function emitFunctionDeclaration(context: EmitContext, functionDeclaration: ts.F
     context.output.appendLine(
       `${functionDeclaration.type.typeName.escapedText} ${functionDeclaration.name.escapedText}() {`,
     );
+    context.output.indent();
 
     if (functionDeclaration.body) {
       for (const statement of functionDeclaration.body.statements) {
@@ -195,6 +196,7 @@ function emitFunctionDeclaration(context: EmitContext, functionDeclaration: ts.F
       }
     }
 
+    context.output.unindent();
     context.output.appendLine(`}`);
   });
 }
@@ -239,11 +241,13 @@ function emitFunctionLevelStatement(context: EmitContext, statement: ts.Statemen
 function emitBlock(context: EmitContext, block: ts.Block): void {
   context.withScope(EmitScope.Block, () => {
     context.output.appendLine("{");
+    context.output.indent();
 
     for (const statement of block.statements) {
       emitFunctionLevelStatement(context, statement);
     }
 
+    context.output.unindent();
     context.output.append("}");
   });
 }
