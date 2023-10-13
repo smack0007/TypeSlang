@@ -26,7 +26,7 @@ public:
     _length = source._length;
   }
 
-  JSString operator+(const char* otherData) {
+  JSString operator+(const char* otherData) const {
     size_t otherLength = strlen(otherData);
     size_t newLength = _length + otherLength;
     char* newData = new char[newLength + 1];
@@ -36,9 +36,9 @@ public:
     newData[newLength] = '\0';
 
     return JSString(newData, newLength);
-  }
+  }  
 
-  JSString operator+(JSString& other) {
+  JSString operator+(const JSString& other) const {
     size_t newLength = _length + other._length;
     char* newData = new char[newLength + 1];
 

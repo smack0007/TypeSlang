@@ -1,9 +1,6 @@
 import ts, { type Identifier } from "typescript";
 import { StringBuilder } from "../../stringBuilder.js";
-import {
-  hasFlag,
-  isFirstCharacterDigit as isFirstCharacterDigit,
-} from "../../utils.js";
+import { hasFlag, isFirstCharacterDigit as isFirstCharacterDigit } from "../../utils.js";
 
 export enum EmitScope {
   None,
@@ -17,6 +14,7 @@ export enum EmitScope {
   IfStatement,
   ReturnStatement,
   VariableStatement,
+  WhileStatement,
   Expression,
   BinaryExpression,
   CallExpression,
@@ -34,10 +32,7 @@ class EmitContext {
 
   private scopeStack = [EmitScope.SourceFile];
 
-  constructor(
-    public readonly typeChecker: ts.TypeChecker,
-    public readonly sourceFile: ts.SourceFile,
-  ) {}
+  constructor(public readonly typeChecker: ts.TypeChecker, public readonly sourceFile: ts.SourceFile) {}
 
   public get currentScope(): EmitScope {
     return this.scopeStack[this.scopeStack.length - 1] ?? EmitScope.None;
@@ -80,15 +75,8 @@ export interface EmitResult {
 }
 
 export class EmitError extends Error {
-  constructor(
-    context: EmitContext,
-    public readonly node: ts.Node,
-    message: string,
-  ) {
-    const { line, character } = context.sourceFile
-      .getLineAndCharacterOfPosition(
-        node.getStart(context.sourceFile),
-      );
+  constructor(context: EmitContext, public readonly node: ts.Node, message: string) {
+    const { line, character } = context.sourceFile.getLineAndCharacterOfPosition(node.getStart(context.sourceFile));
 
     super(`(${line}, ${character}): ${message}`);
   }
@@ -99,9 +87,7 @@ function nodeKindString(node: ts.Node): string {
 }
 
 function getTypeFromNode(context: EmitContext, node: ts.Node): string {
-  let type = context.typeChecker.typeToString(
-    context.typeChecker.getTypeAtLocation(node),
-  );
+  let type = context.typeChecker.typeToString(context.typeChecker.getTypeAtLocation(node));
 
   if (type === "string" || type.startsWith('"')) {
     type = "JSString";
@@ -122,10 +108,7 @@ function typeIsString(type: string): boolean {
   return type === "JSString";
 }
 
-export async function emit(
-  typeChecker: ts.TypeChecker,
-  sourceFile: ts.SourceFile,
-): Promise<EmitResult> {
+export async function emit(typeChecker: ts.TypeChecker, sourceFile: ts.SourceFile): Promise<EmitResult> {
   const context = new EmitContext(typeChecker, sourceFile);
 
   await emitPreamble(context);
@@ -145,10 +128,7 @@ async function emitPreamble(context: EmitContext): Promise<void> {
   context.output.appendLine("#include <tsccpp/runtime.cpp>");
 }
 
-function emitTopLevelStatement(
-  context: EmitContext,
-  statement: ts.Statement,
-): void {
+function emitTopLevelStatement(context: EmitContext, statement: ts.Statement): void {
   context.withScope(EmitScope.TopLevelStatement, () => {
     switch (statement.kind) {
       case ts.SyntaxKind.ImportDeclaration:
@@ -163,18 +143,13 @@ function emitTopLevelStatement(
         throw new EmitError(
           context,
           statement,
-          `Failed to parse ${
-            nodeKindString(statement)
-          } in ${emitTopLevelStatement.name}.`,
+          `Failed to emit ${nodeKindString(statement)} in ${emitTopLevelStatement.name}.`,
         );
     }
   });
 }
 
-function emitImportDeclaration(
-  context: EmitContext,
-  importDeclaration: ts.ImportDeclaration,
-): void {
+function emitImportDeclaration(context: EmitContext, importDeclaration: ts.ImportDeclaration): void {
   context.withScope(EmitScope.ImportDeclaration, () => {
     if (
       importDeclaration.importClause?.name?.escapedText === "std" &&
@@ -187,24 +162,15 @@ function emitImportDeclaration(
     throw new EmitError(
       context,
       importDeclaration,
-      `Failed to parse ${
-        nodeKindString(importDeclaration)
-      } in ${emitImportDeclaration.name}.`,
+      `Failed to emit ${nodeKindString(importDeclaration)} in ${emitImportDeclaration.name}.`,
     );
   });
 }
 
-function emitFunctionDeclaration(
-  context: EmitContext,
-  functionDeclaration: ts.FunctionDeclaration,
-): void {
+function emitFunctionDeclaration(context: EmitContext, functionDeclaration: ts.FunctionDeclaration): void {
   context.withScope(EmitScope.FunctionDeclaration, () => {
     if (!functionDeclaration.name) {
-      throw new EmitError(
-        context,
-        functionDeclaration,
-        `Expected function name to be defined.`,
-      );
+      throw new EmitError(context, functionDeclaration, `Expected function name to be defined.`);
     }
 
     if (
@@ -233,10 +199,7 @@ function emitFunctionDeclaration(
   });
 }
 
-function emitFunctionLevelStatement(
-  context: EmitContext,
-  statement: ts.Statement,
-): void {
+function emitFunctionLevelStatement(context: EmitContext, statement: ts.Statement): void {
   context.withScope(EmitScope.FunctionLevelStatement, () => {
     switch (statement.kind) {
       case ts.SyntaxKind.Block:
@@ -259,13 +222,15 @@ function emitFunctionLevelStatement(
         emitVariableStatement(context, statement as ts.VariableStatement);
         break;
 
+      case ts.SyntaxKind.WhileStatement:
+        emitWhileStatement(context, statement as ts.WhileStatement);
+        break;
+
       default:
         throw new EmitError(
           context,
           statement,
-          `Failed to parse ${
-            nodeKindString(statement)
-          } in ${emitFunctionLevelStatement.name}.`,
+          `Failed to emit ${nodeKindString(statement)} in ${emitFunctionLevelStatement.name}.`,
         );
     }
   });
@@ -283,20 +248,14 @@ function emitBlock(context: EmitContext, block: ts.Block): void {
   });
 }
 
-function emitExpressionStatement(
-  context: EmitContext,
-  expressionStatement: ts.ExpressionStatement,
-): void {
+function emitExpressionStatement(context: EmitContext, expressionStatement: ts.ExpressionStatement): void {
   context.withScope(EmitScope.ExpressionStatement, () => {
     emitExpression(context, expressionStatement.expression);
     context.output.appendLine(";");
   });
 }
 
-function emitIfStatement(
-  context: EmitContext,
-  ifStatement: ts.IfStatement,
-): void {
+function emitIfStatement(context: EmitContext, ifStatement: ts.IfStatement): void {
   context.withScope(EmitScope.IfStatement, () => {
     context.output.append("if (");
     emitExpression(context, ifStatement.expression);
@@ -311,10 +270,7 @@ function emitIfStatement(
   });
 }
 
-function emitReturnStatement(
-  context: EmitContext,
-  returnStatement: ts.ReturnStatement,
-): void {
+function emitReturnStatement(context: EmitContext, returnStatement: ts.ReturnStatement): void {
   context.withScope(EmitScope.ReturnStatement, () => {
     if (returnStatement.expression) {
       context.output.append("return ");
@@ -326,56 +282,53 @@ function emitReturnStatement(
   });
 }
 
-function emitVariableStatement(
-  context: EmitContext,
-  variableStatement: ts.VariableStatement,
-): void {
+function emitVariableStatement(context: EmitContext, variableStatement: ts.VariableStatement): void {
   context.withScope(EmitScope.VariableStatement, () => {
-    for (
-      const variableDeclaration of variableStatement.declarationList
-        .declarations
-    ) {
+    const isConst = hasFlag(variableStatement.declarationList.flags, ts.NodeFlags.Const);
+
+    for (const variableDeclaration of variableStatement.declarationList.declarations) {
       const type = getTypeFromNode(context, variableDeclaration);
 
+      if (isConst) {
+        context.output.append("const ");
+      }
+
+      context.output.append(type);
+      context.output.append(" ");
+      emitIdentifier(context, variableDeclaration.name as Identifier);
+
       if (variableDeclaration.initializer) {
-        context.output.append("auto ");
-        emitIdentifier(context, variableDeclaration.name as Identifier);
         context.output.append(" = ");
 
         if (typeMustBeConstructed(context, type)) {
           context.output.append(type);
           context.output.append("(");
-          if (
-            typeIsString(type) &&
-            variableDeclaration.initializer.kind === ts.SyntaxKind.StringLiteral
-          ) {
-            emitStringLiteral(
-              context,
-              variableDeclaration.initializer as ts.StringLiteral,
-              {
-                withStringLength: true,
-              },
-            );
+          if (typeIsString(type) && variableDeclaration.initializer.kind === ts.SyntaxKind.StringLiteral) {
+            emitStringLiteral(context, variableDeclaration.initializer as ts.StringLiteral, {
+              withStringLength: true,
+            });
           } else {
             emitExpression(context, variableDeclaration.initializer);
           }
 
           context.output.append(")");
         } else {
-          context.output.append("(");
-          context.output.append(type);
-          context.output.append(")(");
           emitExpression(context, variableDeclaration.initializer);
-          context.output.append(")");
         }
-      } else {
-        context.output.append(type);
-        context.output.append(" ");
-        emitIdentifier(context, variableDeclaration.name as Identifier);
       }
 
       context.output.appendLine(";");
     }
+  });
+}
+
+function emitWhileStatement(context: EmitContext, whileStatement: ts.WhileStatement): void {
+  context.withScope(EmitScope.WhileStatement, () => {
+    context.output.append("while (");
+    emitExpression(context, whileStatement.expression);
+    context.output.append(") ");
+    emitFunctionLevelStatement(context, whileStatement.statement);
+    context.output.appendLine();
   });
 }
 
@@ -399,10 +352,7 @@ function emitExpression(context: EmitContext, expression: ts.Expression): void {
         break;
 
       case ts.SyntaxKind.PropertyAccessExpression:
-        emitPropertyAccessExpression(
-          context,
-          expression as ts.PropertyAccessExpression,
-        );
+        emitPropertyAccessExpression(context, expression as ts.PropertyAccessExpression);
         break;
 
       case ts.SyntaxKind.StringLiteral:
@@ -413,18 +363,13 @@ function emitExpression(context: EmitContext, expression: ts.Expression): void {
         throw new EmitError(
           context,
           expression,
-          `Failed to emit ${
-            nodeKindString(expression)
-          } in ${emitExpression.name}.`,
+          `Failed to emit ${nodeKindString(expression)} in ${emitExpression.name}.`,
         );
     }
   });
 }
 
-function emitBinaryExpression(
-  context: EmitContext,
-  binaryExpression: ts.BinaryExpression,
-): void {
+function emitBinaryExpression(context: EmitContext, binaryExpression: ts.BinaryExpression): void {
   context.withScope(EmitScope.BinaryExpression, () => {
     emitExpression(context, binaryExpression.left);
 
@@ -433,37 +378,57 @@ function emitBinaryExpression(
         context.output.append(" * ");
         break;
 
+      case ts.SyntaxKind.AsteriskEqualsToken:
+        context.output.append(" *= ");
+        break;
+
       case ts.SyntaxKind.GreaterThanToken:
         context.output.append(" > ");
+        break;
+
+      case ts.SyntaxKind.GreaterThanEqualsToken:
+        context.output.append(" >= ");
         break;
 
       case ts.SyntaxKind.LessThanToken:
         context.output.append(" < ");
         break;
 
+      case ts.SyntaxKind.LessThanEqualsToken:
+        context.output.append(" <= ");
+        break;
+
       case ts.SyntaxKind.MinusToken:
         context.output.append(" - ");
+        break;
+
+      case ts.SyntaxKind.MinusEqualsToken:
+        context.output.append(" -= ");
         break;
 
       case ts.SyntaxKind.PlusToken:
         context.output.append(" + ");
         break;
 
+      case ts.SyntaxKind.PlusEqualsToken:
+        context.output.append(" += ");
+        break;
+
       case ts.SyntaxKind.SlashToken:
         context.output.append(" / ");
+        break;
+
+      case ts.SyntaxKind.SlashEqualsToken:
+        context.output.append(" /= ");
         break;
 
       default:
         throw new EmitError(
           context,
           binaryExpression,
-          `Failed to emit operatorToken ${
-            nodeKindString(
-              binaryExpression.operatorToken,
-            )
-          } for ${
-            nodeKindString(binaryExpression)
-          } in ${emitBinaryExpression.name}.`,
+          `Failed to emit operatorToken ${nodeKindString(binaryExpression.operatorToken)} for ${nodeKindString(
+            binaryExpression,
+          )} in ${emitBinaryExpression.name}.`,
         );
     }
 
@@ -471,10 +436,7 @@ function emitBinaryExpression(
   });
 }
 
-function emitCallExpression(
-  context: EmitContext,
-  callExpression: ts.CallExpression,
-): void {
+function emitCallExpression(context: EmitContext, callExpression: ts.CallExpression): void {
   context.withScope(EmitScope.CallExpression, () => {
     context.withScope(EmitScope.CallExpressionExpression, () => {
       emitExpression(context, callExpression.expression);
@@ -521,19 +483,13 @@ function emitMemberName(context: EmitContext, memberName: ts.MemberName): void {
   });
 }
 
-function emitIdentifier(
-  context: EmitContext,
-  identifier: ts.Identifier | ts.PrivateIdentifier,
-): void {
+function emitIdentifier(context: EmitContext, identifier: ts.Identifier | ts.PrivateIdentifier): void {
   context.withScope(EmitScope.Identifier, () => {
     context.output.append(identifier.escapedText as string);
   });
 }
 
-function emitNumericLiteral(
-  context: EmitContext,
-  numcericLiteral: ts.NumericLiteral,
-): void {
+function emitNumericLiteral(context: EmitContext, numcericLiteral: ts.NumericLiteral): void {
   context.withScope(EmitScope.NumericLiteral, () => {
     context.output.append(numcericLiteral.text);
   });
