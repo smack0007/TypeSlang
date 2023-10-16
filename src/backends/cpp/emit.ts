@@ -11,15 +11,18 @@ export enum EmitScope {
   FunctionLevelStatement,
   Block,
   ExpressionStatement,
+  ForStatement,
   IfStatement,
   ReturnStatement,
   VariableStatement,
+  VariableDeclarationList,
   WhileStatement,
   Expression,
   BinaryExpression,
   CallExpression,
   CallExpressionExpression,
   CallExpressionArguments,
+  PostfixUnaryExpression,
   PropertyAccessExpression,
   MemberName,
   Identifier,
@@ -212,6 +215,10 @@ function emitFunctionLevelStatement(context: EmitContext, statement: ts.Statemen
         emitExpressionStatement(context, statement as ts.ExpressionStatement);
         break;
 
+      case ts.SyntaxKind.ForStatement:
+        emitForStatement(context, statement as ts.ForStatement);
+        break;
+
       case ts.SyntaxKind.IfStatement:
         emitIfStatement(context, statement as ts.IfStatement);
         break;
@@ -259,6 +266,35 @@ function emitExpressionStatement(context: EmitContext, expressionStatement: ts.E
   });
 }
 
+function emitForStatement(context: EmitContext, forStatement: ts.ForStatement): void {
+  context.withScope(EmitScope.ForStatement, () => {
+    context.output.append("for (");
+
+    if (forStatement.initializer) {
+      if (forStatement.initializer.kind === ts.SyntaxKind.VariableDeclarationList) {
+        emitVariableDeclarationList(context, forStatement.initializer as ts.VariableDeclarationList);
+      } else {
+        emitExpression(context, forStatement.initializer as ts.Expression);
+      }
+    }
+    context.output.append("; ");
+
+    if (forStatement.condition) {
+      emitExpression(context, forStatement.condition);
+    }
+    context.output.append("; ");
+
+    if (forStatement.incrementor) {
+      emitExpression(context, forStatement.incrementor);
+    }
+    context.output.append(") ");
+
+    emitFunctionLevelStatement(context, forStatement.statement);
+
+    context.output.appendLine();
+  });
+}
+
 function emitIfStatement(context: EmitContext, ifStatement: ts.IfStatement): void {
   context.withScope(EmitScope.IfStatement, () => {
     context.output.append("if (");
@@ -290,7 +326,27 @@ function emitVariableStatement(context: EmitContext, variableStatement: ts.Varia
   context.withScope(EmitScope.VariableStatement, () => {
     const isConst = hasFlag(variableStatement.declarationList.flags, ts.NodeFlags.Const);
 
-    for (const variableDeclaration of variableStatement.declarationList.declarations) {
+    emitVariableDeclarationList(context, variableStatement.declarationList, {
+      isConst,
+    });
+
+    context.output.appendLine(";");
+  });
+}
+
+interface EmitVariableDeclarationListOptions {
+  isConst?: boolean;
+}
+
+function emitVariableDeclarationList(
+  context: EmitContext,
+  variableDeclarationList: ts.VariableDeclarationList,
+  options: EmitVariableDeclarationListOptions = {},
+): void {
+  const { isConst } = options;
+
+  context.withScope(EmitScope.VariableDeclarationList, () => {
+    for (const variableDeclaration of variableDeclarationList.declarations) {
       const type = getTypeFromNode(context, variableDeclaration);
 
       if (isConst) {
@@ -320,8 +376,6 @@ function emitVariableStatement(context: EmitContext, variableStatement: ts.Varia
           emitExpression(context, variableDeclaration.initializer);
         }
       }
-
-      context.output.appendLine(";");
     }
   });
 }
@@ -353,6 +407,10 @@ function emitExpression(context: EmitContext, expression: ts.Expression): void {
 
       case ts.SyntaxKind.NumericLiteral:
         emitNumericLiteral(context, expression as ts.NumericLiteral);
+        break;
+
+      case ts.SyntaxKind.PostfixUnaryExpression:
+        emitPostfixUnaryExpression(context, expression as ts.PostfixUnaryExpression);
         break;
 
       case ts.SyntaxKind.PropertyAccessExpression:
@@ -461,6 +519,22 @@ function emitCallExpression(context: EmitContext, callExpression: ts.CallExpress
     });
 
     context.output.append(")");
+  });
+}
+
+function emitPostfixUnaryExpression(context: EmitContext, postfixUnaryExpression: ts.PostfixUnaryExpression): void {
+  context.withScope(EmitScope.PostfixUnaryExpression, () => {
+    emitExpression(context, postfixUnaryExpression.operand);
+
+    switch (postfixUnaryExpression.operator) {
+      case ts.SyntaxKind.PlusPlusToken:
+        context.output.append("++");
+        break;
+
+      case ts.SyntaxKind.MinusMinusToken:
+        context.output.append("--");
+        break;
+    }
   });
 }
 
