@@ -1,3 +1,4 @@
+namespace JS {
 class Console {
 public:
   template<class T1>
@@ -20,5 +21,4 @@ public:
     fmt::print("{} {} {} {}\n", value1, value2, value3, value4);
   }
 };
-
-Console console;
+}

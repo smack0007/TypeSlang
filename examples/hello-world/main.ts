@@ -1,4 +1,7 @@
 function main(): i32 {
+  const data = [1, 2, 3, 4];
+  console.info(data);
+
   const message = "Hello";
   const message2 = "World!";
   let counter = 1;

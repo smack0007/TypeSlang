@@ -5,7 +5,11 @@
 
 typedef int32_t i32;
 
-#include "Console.cpp"
-#include "JSString.cpp"
+#include "array.cpp"
+#include "console.cpp"
+#include "string.cpp"
 
+typedef JS::String string;
+
+JS::Console console;
 

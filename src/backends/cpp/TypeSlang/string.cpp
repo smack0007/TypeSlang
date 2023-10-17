@@ -1,32 +1,33 @@
 #include <cstring>
 #include <fmt/format.h>
 
-class JSString {
+namespace JS {
+class String {
   const char* _data;
   size_t _length;
 
 public:
-  JSString(const char* data) {
+  String(const char* data) {
     _data = data;
     _length = strlen(data);
   }
   
-  JSString(const char* data, size_t length) {
+  String(const char* data, size_t length) {
     _data = data;
     _length = length;
   }
 
-  JSString(const JSString& source) {
+  String(const String& source) {
     _data = source._data;
     _length = source._length;
   }
 
-  JSString(JSString&& source) {
+  String(String&& source) {
     _data = source._data;
     _length = source._length;
   }
 
-  JSString operator+(const char* otherData) const {
+  String operator+(const char* otherData) const {
     size_t otherLength = strlen(otherData);
     size_t newLength = _length + otherLength;
     char* newData = new char[newLength + 1];
@@ -35,10 +36,10 @@ public:
     strncpy(newData + _length, otherData, otherLength);
     newData[newLength] = '\0';
 
-    return JSString(newData, newLength);
+    return String(newData, newLength);
   }  
 
-  JSString operator+(const JSString& other) const {
+  String operator+(const String& other) const {
     size_t newLength = _length + other._length;
     char* newData = new char[newLength + 1];
 
@@ -46,7 +47,7 @@ public:
     strncpy(newData + _length, other._data, other._length);
     newData[newLength] = '\0';
 
-    return JSString(newData, newLength);
+    return String(newData, newLength);
   }
 
   const char* data() const {
@@ -57,9 +58,10 @@ public:
     return _length;
   }
 };
+}
 
 template<>
-struct fmt::formatter<JSString>
+struct fmt::formatter<JS::String>
 {
   template<typename ParseContext>
   constexpr auto parse(ParseContext& ctx) {
@@ -67,7 +69,7 @@ struct fmt::formatter<JSString>
   }
 
   template<typename FormatContext>
-  auto format(JSString const& string, FormatContext& ctx) {
+  auto format(JS::String const& string, FormatContext& ctx) {
     return fmt::format_to(ctx.out(), "{0}", string.data());
   }
 };

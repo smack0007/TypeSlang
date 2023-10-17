@@ -19,6 +19,7 @@ export enum EmitScope {
   VariableDeclarationList,
   WhileStatement,
   Expression,
+  ArrayLiteralExpression,
   BinaryExpression,
   CallExpression,
   CallExpressionExpression,
@@ -93,23 +94,36 @@ function nodeKindString(node: ts.Node): string {
 function getTypeFromNode(context: EmitContext, node: ts.Node): string {
   let type = context.typeChecker.typeToString(context.typeChecker.getTypeAtLocation(node));
 
-  if (type === "string" || type.startsWith('"')) {
-    type = "JSString";
+  if (type.startsWith('"') && type.endsWith('"')) {
+    type = "string";
   }
 
-  if (type === "number" || isFirstCharacterDigit(type)) {
+  if (type.startsWith("number")) {
+    type = type.replace("number", "i32");
+  }
+
+  if (isFirstCharacterDigit(type)) {
     type = "i32";
+  }
+
+  if (type.endsWith("[]")) {
+    type = type.substring(0, type.length - 2);
+    type = `Array<${type}>`;
   }
 
   return type;
 }
 
 function typeMustBeConstructed(context: EmitContext, type: string): boolean {
-  return ["JSString"].includes(type);
+  return ["string"].includes(type);
+}
+
+function typeIsArray(type: string): boolean {
+  return type.startsWith("Array");
 }
 
 function typeIsString(type: string): boolean {
-  return type === "JSString";
+  return type === "string";
 }
 
 export async function emit(typeChecker: ts.TypeChecker, sourceFile: ts.SourceFile): Promise<EmitResult> {
@@ -130,6 +144,7 @@ export async function emit(typeChecker: ts.TypeChecker, sourceFile: ts.SourceFil
 
 async function emitPreamble(context: EmitContext): Promise<void> {
   context.output.appendLine("#include <TypeSlang/runtime.cpp>");
+  context.output.appendLine("using namespace JS;");
 }
 
 function emitTopLevelStatement(context: EmitContext, statement: ts.Statement): void {
@@ -380,22 +395,7 @@ function emitVariableDeclarationList(
 
       if (variableDeclaration.initializer) {
         context.output.append(" = ");
-
-        if (typeMustBeConstructed(context, type)) {
-          context.output.append(type);
-          context.output.append("(");
-          if (typeIsString(type) && variableDeclaration.initializer.kind === ts.SyntaxKind.StringLiteral) {
-            emitStringLiteral(context, variableDeclaration.initializer as ts.StringLiteral, {
-              withStringLength: true,
-            });
-          } else {
-            emitExpression(context, variableDeclaration.initializer);
-          }
-
-          context.output.append(")");
-        } else {
-          emitExpression(context, variableDeclaration.initializer);
-        }
+        emitExpression(context, variableDeclaration.initializer);
       }
     }
   });
@@ -414,6 +414,10 @@ function emitWhileStatement(context: EmitContext, whileStatement: ts.WhileStatem
 function emitExpression(context: EmitContext, expression: ts.Expression): void {
   context.withScope(EmitScope.Expression, () => {
     switch (expression.kind) {
+      case ts.SyntaxKind.ArrayLiteralExpression:
+        emitArrayLiteralExpression(context, expression as ts.ArrayLiteralExpression);
+        break;
+
       case ts.SyntaxKind.BinaryExpression:
         emitBinaryExpression(context, expression as ts.BinaryExpression);
         break;
@@ -449,6 +453,23 @@ function emitExpression(context: EmitContext, expression: ts.Expression): void {
           `Failed to emit ${nodeKindString(expression)} in ${emitExpression.name}.`,
         );
     }
+  });
+}
+
+function emitArrayLiteralExpression(context: EmitContext, arrayLiteralExpression: ts.ArrayLiteralExpression): void {
+  context.withScope(EmitScope.ArrayLiteralExpression, () => {
+    const type = getTypeFromNode(context, arrayLiteralExpression);
+
+    context.output.append(`${type}({ `);
+
+    for (let i = 0; i < arrayLiteralExpression.elements.length; i++) {
+      emitExpression(context, arrayLiteralExpression.elements[i]!);
+      if (i !== arrayLiteralExpression.elements.length - 1) {
+        context.output.append(", ");
+      }
+    }
+
+    context.output.append(` }, ${arrayLiteralExpression.elements.length})`);
   });
 }
 
@@ -594,21 +615,8 @@ function emitNumericLiteral(context: EmitContext, numcericLiteral: ts.NumericLit
   });
 }
 
-interface EmitStringLiteralOptions {
-  withStringLength?: boolean;
-}
-
-function emitStringLiteral(
-  context: EmitContext,
-  stringLiteral: ts.StringLiteral,
-  options: EmitStringLiteralOptions = {},
-): void {
+function emitStringLiteral(context: EmitContext, stringLiteral: ts.StringLiteral): void {
   context.withScope(EmitScope.StringLiteral, () => {
-    context.output.append(`"${stringLiteral.text}"`);
-
-    if (options.withStringLength) {
-      context.output.append(", ");
-      context.output.append(stringLiteral.text.length.toString());
-    }
+    context.output.append(`String("${stringLiteral.text}", ${stringLiteral.text.length.toString()})`);
   });
 }
