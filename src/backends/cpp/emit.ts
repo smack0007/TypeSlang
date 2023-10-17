@@ -10,6 +10,7 @@ export enum EmitScope {
   FunctionDeclaration,
   FunctionLevelStatement,
   Block,
+  DoStatement,
   ExpressionStatement,
   ForStatement,
   IfStatement,
@@ -211,6 +212,10 @@ function emitFunctionLevelStatement(context: EmitContext, statement: ts.Statemen
         emitBlock(context, statement as ts.Block);
         break;
 
+      case ts.SyntaxKind.DoStatement:
+        emitDoStatement(context, statement as ts.DoStatement);
+        break;
+
       case ts.SyntaxKind.ExpressionStatement:
         emitExpressionStatement(context, statement as ts.ExpressionStatement);
         break;
@@ -256,6 +261,22 @@ function emitBlock(context: EmitContext, block: ts.Block): void {
 
     context.output.unindent();
     context.output.append("}");
+  });
+}
+
+function emitDoStatement(context: EmitContext, doStatement: ts.DoStatement): void {
+  context.withScope(EmitScope.DoStatement, () => {
+    context.output.append("do ");
+
+    emitFunctionLevelStatement(context, doStatement.statement);
+
+    context.output.append(" while (");
+
+    emitExpression(context, doStatement.expression);
+
+    context.output.append(");");
+
+    context.output.appendLine();
   });
 }
 
