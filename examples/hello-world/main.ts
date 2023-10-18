@@ -1,6 +1,6 @@
 function main(): i32 {
   const data = [1, 2, 3, 4];
-  console.info(data);
+  console.info(data, data[1] + data[2]);
 
   const message = "Hello";
   const message2 = "World!";

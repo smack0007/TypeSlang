@@ -24,6 +24,7 @@ export enum EmitScope {
   CallExpression,
   CallExpressionExpression,
   CallExpressionArguments,
+  ElementAccessExpression,
   PostfixUnaryExpression,
   PropertyAccessExpression,
   MemberName,
@@ -426,6 +427,10 @@ function emitExpression(context: EmitContext, expression: ts.Expression): void {
         emitCallExpression(context, expression as ts.CallExpression);
         break;
 
+      case ts.SyntaxKind.ElementAccessExpression:
+        emitElementAccessExpression(context, expression as ts.ElementAccessExpression);
+        break;
+
       case ts.SyntaxKind.Identifier:
         emitIdentifier(context, expression as ts.Identifier);
         break;
@@ -561,6 +566,15 @@ function emitCallExpression(context: EmitContext, callExpression: ts.CallExpress
     });
 
     context.output.append(")");
+  });
+}
+
+function emitElementAccessExpression(context: EmitContext, elementAccessExpression: ts.ElementAccessExpression): void {
+  context.withScope(EmitScope.ElementAccessExpression, () => {
+    emitExpression(context, elementAccessExpression.expression);
+    context.output.append("[");
+    emitExpression(context, elementAccessExpression.argumentExpression);
+    context.output.append("]");
   });
 }
 

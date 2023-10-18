@@ -3,12 +3,12 @@
 namespace JS {
 template<typename T>
 class Array {
-  T* _data;
+  std::vector<T> _data;
   size_t _length;
 
 public:
   Array(const std::initializer_list<T> data, size_t length) {
-    _data = const_cast<T*>(data.begin());
+    _data = std::vector<T>(data);
     _length = length;
   }
 
@@ -22,8 +22,8 @@ public:
     _length = source._length;
   }
 
-  const T* data() const {
-    return _data;
+  T operator [](size_t i) const {
+    return _data[i];
   }
 
   size_t length() const {
@@ -45,7 +45,7 @@ struct fmt::formatter<JS::Array<T>>
     fmt::format_to(ctx.out(), "[");
     
     for (size_t i = 0; i < array.length(); i++) {
-      fmt::format_to(ctx.out(), " {0}", array.data()[i]);
+      fmt::format_to(ctx.out(), " {0}", array[i]);
 
       if (i != array.length() - 1) {
         fmt::format_to(ctx.out(), ",");
