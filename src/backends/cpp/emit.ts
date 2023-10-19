@@ -386,10 +386,6 @@ function emitVariableDeclarationList(
     for (const variableDeclaration of variableDeclarationList.declarations) {
       const type = getTypeFromNode(context, variableDeclaration);
 
-      if (isConst) {
-        context.output.append("const ");
-      }
-
       context.output.append(type);
       context.output.append(" ");
       emitIdentifier(context, variableDeclaration.name as Identifier);

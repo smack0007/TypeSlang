@@ -1,7 +1,7 @@
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #define FMT_HEADER_ONLY
-#include <fmt/core.h> 
+#include <fmt/core.h>
 
 typedef int32_t i32;
 
@@ -12,4 +12,3 @@ typedef int32_t i32;
 typedef JS::String string;
 
 JS::Console console;
-

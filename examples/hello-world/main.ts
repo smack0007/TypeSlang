@@ -1,6 +1,9 @@
 function main(): i32 {
   const data = [1, 2, 3, 4];
-  console.info(data, data[1] + data[2]);
+  console.info(data, data.length);
+  console.info(data.pop());
+  data.push(5);
+  console.info(data, data.length);
 
   const message = "Hello";
   const message2 = "World!";
