@@ -2,6 +2,22 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Run Emit Smoke Test",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "type": "shell",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "command": "./cc.sh ./tests/programs/emitSmokeTest.ts ./bin/emitSmokeTest && ./bin/emitSmokeTest",
+      "problemMatcher": [],
+      "presentation": {
+        "clear": true
+      }
+    },
+    {
       "label": "Run Hello World",
       "group": {
         "kind": "build",

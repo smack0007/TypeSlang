@@ -1,7 +1,9 @@
 import fs from "node:fs/promises";
+import path from "node:path";
 import process from "node:process";
 import ts from "typescript";
 import { emit, type EmitResult } from "./backends/cpp/emit.js";
+import { ensureDirectoryExists } from "./fs.js";
 
 async function main(args: string[]): Promise<i32> {
   // TODO: Check these
@@ -11,12 +13,10 @@ async function main(args: string[]): Promise<i32> {
   const program = ts.createProgram([inputFilePath], {
     target: ts.ScriptTarget.ES2022,
   });
-  
+
   const typeChecker = program.getTypeChecker();
 
-  const sourceFiles = program.getSourceFiles().filter((x) =>
-    !x.isDeclarationFile
-  );
+  const sourceFiles = program.getSourceFiles().filter((x) => !x.isDeclarationFile);
 
   if (sourceFiles.length > 1) {
     console.error("Multiple source files currently not supported.");
@@ -33,6 +33,7 @@ async function main(args: string[]): Promise<i32> {
     return 1;
   }
 
+  await ensureDirectoryExists(path.dirname(outputFilePath));
   await fs.writeFile(outputFilePath, result.output, "utf8");
 
   return 0;

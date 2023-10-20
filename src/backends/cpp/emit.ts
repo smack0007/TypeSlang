@@ -93,39 +93,37 @@ function nodeKindString(node: ts.Node): string {
   return ts.SyntaxKind[node.kind];
 }
 
+function mapType(context: EmitContext, type: ts.Type): string {
+  let typeName = context.typeChecker.typeToString(type);
+
+  if (typeName.startsWith('"') && typeName.endsWith('"')) {
+    typeName = "string";
+  }
+
+  if (typeName.startsWith("number")) {
+    typeName = typeName.replace("number", "i32");
+  }
+
+  if (isFirstCharacterDigit(typeName)) {
+    typeName = "i32";
+  }
+
+  if (typeName.endsWith("[]")) {
+    typeName = typeName.substring(0, typeName.length - 2);
+    typeName = `Array<${typeName}>`;
+  }
+
+  return typeName;
+}
+
 function getTypeFromNode(context: EmitContext, node: ts.Node): string {
-  let type = context.typeChecker.typeToString(context.typeChecker.getTypeAtLocation(node));
-
-  if (type.startsWith('"') && type.endsWith('"')) {
-    type = "string";
-  }
-
-  if (type.startsWith("number")) {
-    type = type.replace("number", "i32");
-  }
-
-  if (isFirstCharacterDigit(type)) {
-    type = "i32";
-  }
-
-  if (type.endsWith("[]")) {
-    type = type.substring(0, type.length - 2);
-    type = `Array<${type}>`;
-  }
-
-  return type;
+  const type = context.typeChecker.getTypeAtLocation(node);
+  return mapType(context, type);
 }
 
-function typeMustBeConstructed(context: EmitContext, type: string): boolean {
-  return ["string"].includes(type);
-}
-
-function typeIsArray(type: string): boolean {
-  return type.startsWith("Array");
-}
-
-function typeIsString(type: string): boolean {
-  return type === "string";
+function getFunctionReturnType(context: EmitContext, functionDeclaration: ts.FunctionDeclaration): string {
+  const signature = context.typeChecker.getSignatureFromDeclaration(functionDeclaration);
+  return mapType(context, signature!.getReturnType());
 }
 
 export async function emit(typeChecker: ts.TypeChecker, sourceFile: ts.SourceFile): Promise<EmitResult> {
@@ -190,25 +188,13 @@ function emitImportDeclaration(context: EmitContext, importDeclaration: ts.Impor
 
 function emitFunctionDeclaration(context: EmitContext, functionDeclaration: ts.FunctionDeclaration): void {
   context.withScope(EmitScope.FunctionDeclaration, () => {
+    const returnType = getFunctionReturnType(context, functionDeclaration);
+
     if (!functionDeclaration.name) {
       throw new EmitError(context, functionDeclaration, `Expected function name to be defined.`);
     }
 
-    if (
-      !functionDeclaration.type ||
-      !ts.isTypeReferenceNode(functionDeclaration.type) ||
-      !ts.isIdentifier(functionDeclaration.type.typeName)
-    ) {
-      throw new EmitError(
-        context,
-        functionDeclaration,
-        `Expected function return type to be defined for ${functionDeclaration.name.escapedText}.`,
-      );
-    }
-
-    context.output.appendLine(
-      `${functionDeclaration.type.typeName.escapedText} ${functionDeclaration.name.escapedText}() {`,
-    );
+    context.output.appendLine(`${returnType} ${functionDeclaration.name.escapedText}() {`);
     context.output.indent();
 
     if (functionDeclaration.body) {
