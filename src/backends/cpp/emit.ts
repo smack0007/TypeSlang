@@ -1,4 +1,4 @@
-import ts, { type Identifier } from "typescript";
+import ts, { type Identifier, type TemplateLiteralLikeNode } from "typescript";
 import { StringBuilder } from "../../stringBuilder.js";
 import { hasFlag, isFirstCharacterDigit as isFirstCharacterDigit } from "../../utils.js";
 
@@ -31,6 +31,7 @@ export enum EmitScope {
   Identifier,
   NumericLiteral,
   StringLiteral,
+  TemplateExpression,
 }
 
 class EmitContext {
@@ -447,6 +448,10 @@ function emitExpression(context: EmitContext, expression: ts.Expression): void {
         emitStringLiteral(context, expression as ts.StringLiteral);
         break;
 
+      case ts.SyntaxKind.TemplateExpression:
+        emitTemplateExpression(context, expression as ts.TemplateExpression);
+        break;
+
       default:
         throw new EmitError(
           context,
@@ -628,5 +633,37 @@ function emitNumericLiteral(context: EmitContext, numcericLiteral: ts.NumericLit
 function emitStringLiteral(context: EmitContext, stringLiteral: ts.StringLiteral): void {
   context.withScope(EmitScope.StringLiteral, () => {
     context.output.append(`String("${stringLiteral.text}", ${stringLiteral.text.length.toString()})`);
+  });
+}
+
+function emitTemplateExpression(context: EmitContext, templateExpression: ts.TemplateExpression): void {
+  context.withScope(EmitScope.TemplateExpression, () => {
+    const expressions: ts.Expression[] = [];
+
+    context.output.append('String::format("');
+
+    if (templateExpression.head.text) {
+      context.output.append(templateExpression.head.text);
+    }
+
+    for (const templateSpan of templateExpression.templateSpans) {
+      if (templateSpan.expression) {
+        expressions.push(templateSpan.expression);
+        context.output.append("{}");
+      }
+
+      if (templateSpan.literal.text) {
+        context.output.append(templateSpan.literal.text);
+      }
+    }
+
+    context.output.append('"');
+
+    for (const expression of expressions) {
+      context.output.append(", ");
+      emitExpression(context, expression);
+    }
+
+    context.output.append(")");
   });
 }

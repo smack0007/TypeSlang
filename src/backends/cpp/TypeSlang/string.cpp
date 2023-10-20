@@ -3,73 +3,37 @@
 
 namespace JS {
 class String {
-  const char* _data;
-  size_t _length;
+  std::string _data;
 
 public:
-  String(const char* data) {
-    _data = data;
-    _length = strlen(data);
-  }
-  
-  String(const char* data, size_t length) {
-    _data = data;
-    _length = length;
-  }
+  String(const char *data) { _data = std::string(data); }
 
-  String(const String& source) {
-    _data = source._data;
-    _length = source._length;
-  }
+  String(const char *data, size_t length) { _data = std::string(data, length); }
 
-  String(String&& source) {
-    _data = source._data;
-    _length = source._length;
+  String(std::string data) { _data = data; }
+
+  String(const String &source) { _data = source._data; }
+
+  String(String &&source) { _data = source._data; }
+
+  String operator+(const char *other) const { return String(_data + other); }
+
+  String operator+(const String &other) const { return String(_data + other._data); }
+
+  template <typename... T> static String format(fmt::format_string<T...> format, T &&...args) {
+    return String(fmt::format(format, std::forward<T>(args)...));
   }
 
-  String operator+(const char* otherData) const {
-    size_t otherLength = strlen(otherData);
-    size_t newLength = _length + otherLength;
-    char* newData = new char[newLength + 1];
+  std::string data() const { return _data; }
 
-    strncpy(newData, _data, _length);
-    strncpy(newData + _length, otherData, otherLength);
-    newData[newLength] = '\0';
-
-    return String(newData, newLength);
-  }  
-
-  String operator+(const String& other) const {
-    size_t newLength = _length + other._length;
-    char* newData = new char[newLength + 1];
-
-    strncpy(newData, _data, _length);
-    strncpy(newData + _length, other._data, other._length);
-    newData[newLength] = '\0';
-
-    return String(newData, newLength);
-  }
-
-  const char* data() const {
-    return _data;
-  }
-
-  size_t length() const {
-    return _length;
-  }
+  size_t length() const { return _data.size(); }
 };
-}
+} // namespace JS
 
-template<>
-struct fmt::formatter<JS::String>
-{
-  template<typename ParseContext>
-  constexpr auto parse(ParseContext& ctx) {
-    return ctx.begin();
-  }
+template <> struct fmt::formatter<JS::String> {
+  template <typename ParseContext> constexpr auto parse(ParseContext &ctx) { return ctx.begin(); }
 
-  template<typename FormatContext>
-  auto format(JS::String const& string, FormatContext& ctx) {
-    return fmt::format_to(ctx.out(), "{0}", string.data());
+  template <typename FormatContext> auto format(JS::String const &string, FormatContext &ctx) {
+    return fmt::format_to(ctx.out(), "{}", string.data());
   }
 };
