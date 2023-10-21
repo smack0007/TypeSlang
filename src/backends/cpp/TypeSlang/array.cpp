@@ -1,3 +1,4 @@
+#include <vector>
 #include <fmt/format.h>
 
 namespace JS {
