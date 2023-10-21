@@ -131,6 +131,9 @@ export async function emit(typeChecker: ts.TypeChecker, sourceFile: ts.SourceFil
 
   await emitPreamble(context);
 
+  const fowardDeclaredFunctions = context.output.insertPlaceholder();
+  fowardDeclaredFunctions.appendLine("// Functions");
+
   context.withScope(EmitScope.SourceFile, () => {
     for (const statement of sourceFile.statements) {
       emitTopLevelStatement(context, statement);
