@@ -2,7 +2,6 @@ import { EOL } from "node:os";
 
 export class StringBuilder {
   private data: (string | StringBuilder)[] = [""];
-  private placeholders: Record<string, StringBuilder> = {};
 
   private indentLevel = 0;
 

@@ -39,6 +39,8 @@ class EmitContext {
 
   private scopeStack = [EmitScope.SourceFile];
 
+  public functions: ts.FunctionDeclaration[] = [];
+
   constructor(public readonly typeChecker: ts.TypeChecker, public readonly sourceFile: ts.SourceFile) {}
 
   public get currentScope(): EmitScope {
@@ -140,6 +142,14 @@ export async function emit(typeChecker: ts.TypeChecker, sourceFile: ts.SourceFil
     }
   });
 
+  // TODO: This is really ugly but will work for now.
+  const originalOutput = context.output;
+  context.output = fowardDeclaredFunctions;
+  for (const func of context.functions) {
+    emitFunctionDeclaration(context, func, { signatureOnly: true });
+  }
+  context.output = originalOutput;
+
   return {
     output: context.output.toString(),
   };
@@ -189,7 +199,15 @@ function emitImportDeclaration(context: EmitContext, importDeclaration: ts.Impor
   });
 }
 
-function emitFunctionDeclaration(context: EmitContext, functionDeclaration: ts.FunctionDeclaration): void {
+interface EmitFunctionDeclarationOptions {
+  signatureOnly?: boolean;
+}
+
+function emitFunctionDeclaration(
+  context: EmitContext,
+  functionDeclaration: ts.FunctionDeclaration,
+  options: EmitFunctionDeclarationOptions = {},
+): void {
   context.withScope(EmitScope.FunctionDeclaration, () => {
     const returnType = getFunctionReturnType(context, functionDeclaration);
 
@@ -197,17 +215,26 @@ function emitFunctionDeclaration(context: EmitContext, functionDeclaration: ts.F
       throw new EmitError(context, functionDeclaration, `Expected function name to be defined.`);
     }
 
-    context.output.appendLine(`${returnType} ${functionDeclaration.name.escapedText}() {`);
-    context.output.indent();
+    context.output.append(`${returnType} ${functionDeclaration.name.escapedText}()`);
 
-    if (functionDeclaration.body) {
-      for (const statement of functionDeclaration.body.statements) {
-        emitFunctionLevelStatement(context, statement);
+    if (!options.signatureOnly) {
+      context.functions.push(functionDeclaration);
+
+      context.output.appendLine(" {");
+      context.output.indent();
+
+      if (functionDeclaration.body) {
+        for (const statement of functionDeclaration.body.statements) {
+          emitFunctionLevelStatement(context, statement);
+        }
       }
-    }
 
-    context.output.unindent();
-    context.output.appendLine(`}`);
+      context.output.unindent();
+      context.output.appendLine("}");
+      context.output.appendLine();
+    } else {
+      context.output.appendLine(";");
+    }
   });
 }
 
