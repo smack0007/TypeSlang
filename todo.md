@@ -1,7 +1,7 @@
+- functions with arguments
+
 - booleans
 - floats
 
 - structs
 - classes
-
-- Implement forward declarations of functions
