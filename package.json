@@ -8,7 +8,7 @@
     "@typescript-eslint/eslint-plugin": "6.7.0",
     "@typescript-eslint/parser": "6.7.0",
     "eslint": "8.49.0",
-    "tsx": "3.12.9"
+    "tsx": "3.14.0"
   },
   "scripts": {
     "run:hello-world": "tsx ./src/main.ts ./examples/hello-world/main.ts ./tmp/hello-world.cpp"

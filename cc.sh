@@ -1,5 +1,5 @@
 #!/bin/sh
-SCRIPT_PATH=$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+SCRIPT_PATH=$(dirname $0)
 set -e
 
 cd ${SCRIPT_PATH}
