@@ -1,9 +1,28 @@
 import ts, { type Identifier, type TemplateLiteralLikeNode } from "typescript";
 import { StringBuilder } from "../../stringBuilder.js";
 import { hasFlag, isFirstCharacterDigit as isFirstCharacterDigit } from "../../utils.js";
+import { Stack } from "../../stack.js";
+
+class VariableData {
+  public isInitialized: boolean = false;
+
+  constructor(public type: string) {}
+}
+
+class VariableScope {
+  private _data: Map<string, VariableData> = new Map<string, VariableData>();
+
+  public declare(name: ts.Identifier, type: string): void {
+    if (this._data.has(name.escapedText as string)) {
+      throw new Error(`Variable ${name} is already declared.`);
+    }
+    this._data.set(name.escapedText as string, new VariableData(type));
+  }
+}
 
 class EmitContext {
-  private _outputStack = [new StringBuilder()];
+  private _outputStack = new Stack<StringBuilder>([new StringBuilder()]);
+  private _scopeStack = new Stack<VariableScope>([new VariableScope()]);
 
   public functions: ts.FunctionDeclaration[] = [];
 
@@ -12,7 +31,7 @@ class EmitContext {
   constructor(public readonly typeChecker: ts.TypeChecker, public readonly sourceFile: ts.SourceFile) {}
 
   public get output(): StringBuilder {
-    return this._outputStack[this._outputStack.length - 1];
+    return this._outputStack.top();
   }
 
   public pushOutput(output: StringBuilder): void {
@@ -20,11 +39,19 @@ class EmitContext {
   }
 
   public popOutput(): void {
-    if (this._outputStack.length <= 1) {
-      throw new Error("Output stack cannot be popped.");
-    }
-
     this._outputStack.pop();
+  }
+
+  public pushScope(): void {
+    this._scopeStack.push(new VariableScope());
+  }
+
+  public popScope(): void {
+    this._scopeStack.pop();
+  }
+
+  public scope(): VariableScope {
+    return this._scopeStack.top();
   }
 }
 
@@ -164,9 +191,7 @@ function emitFunctionDeclaration(
     context.output.indent();
 
     if (functionDeclaration.body) {
-      for (const statement of functionDeclaration.body.statements) {
-        emitFunctionLevelStatement(context, statement);
-      }
+      emitBlock(context, functionDeclaration.body);
     }
 
     context.output.unindent();
@@ -224,9 +249,13 @@ function emitBlock(context: EmitContext, block: ts.Block): void {
   context.output.appendLine("{");
   context.output.indent();
 
+  context.pushScope();
+
   for (const statement of block.statements) {
     emitFunctionLevelStatement(context, statement);
   }
+
+  context.popScope();
 
   context.output.unindent();
   context.output.append("}");
@@ -327,7 +356,9 @@ function emitVariableDeclarationList(
 
     context.output.append(type);
     context.output.append(" ");
-    emitIdentifier(context, variableDeclaration.name as Identifier);
+    emitIdentifier(context, variableDeclaration.name as ts.Identifier);
+
+    context.scope().declare(variableDeclaration.name as ts.Identifier, type);
 
     if (variableDeclaration.initializer) {
       context.output.append(" = ");
