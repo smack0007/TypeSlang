@@ -24,7 +24,7 @@ export class Stack<T> {
     return this._data.pop() as T;
   }
 
-  public top(): T {
+  public get top(): T {
     if (this._data.length <= 0) {
       throw new Error("Stack empty.");
     }

@@ -18,6 +18,13 @@ class VariableScope {
     }
     this._data.set(name.escapedText as string, new VariableData(type));
   }
+
+  public set(name: ts.Identifier): void {
+    if (!this._data.has(name.escapedText as string)) {
+      throw new Error(`Variable is not declared.`);
+    }
+    this._data.get(name.escapedText as string)!.isInitialized = true;
+  }
 }
 
 class EmitContext {
@@ -31,7 +38,7 @@ class EmitContext {
   constructor(public readonly typeChecker: ts.TypeChecker, public readonly sourceFile: ts.SourceFile) {}
 
   public get output(): StringBuilder {
-    return this._outputStack.top();
+    return this._outputStack.top;
   }
 
   public pushOutput(output: StringBuilder): void {
@@ -50,8 +57,8 @@ class EmitContext {
     this._scopeStack.pop();
   }
 
-  public scope(): VariableScope {
-    return this._scopeStack.top();
+  public get scope(): VariableScope {
+    return this._scopeStack.top;
   }
 }
 
@@ -102,6 +109,11 @@ function getTypeFromNode(context: EmitContext, node: ts.Node): string {
 function getFunctionReturnType(context: EmitContext, functionDeclaration: ts.FunctionDeclaration): string {
   const signature = context.typeChecker.getSignatureFromDeclaration(functionDeclaration);
   return mapType(context, signature!.getReturnType());
+}
+
+function getFunctionParameterType(context: EmitContext, parameter: ts.ParameterDeclaration): string {
+  const type = context.typeChecker.getTypeAtLocation(parameter);
+  return mapType(context, type);
 }
 
 export async function emit(typeChecker: ts.TypeChecker, sourceFile: ts.SourceFile): Promise<EmitResult> {
@@ -182,20 +194,32 @@ function emitFunctionDeclaration(
     throw new EmitError(context, functionDeclaration, `Expected function name to be defined.`);
   }
 
-  context.output.append(`${returnType} ${functionDeclaration.name.escapedText}()`);
+  context.output.append(`${returnType} ${functionDeclaration.name.escapedText}(`);
+
+  for (let i = 0; i < functionDeclaration.parameters.length; i++) {
+    if (i !== 0) {
+      context.output.append(", ");
+    }
+
+    const parameter = functionDeclaration.parameters[i];
+    const parameterType = getFunctionParameterType(context, parameter);
+    context.output.append(`${parameterType} ${(parameter.name as ts.Identifier).escapedText}`);
+  }
+
+  context.output.append(")");
 
   if (!options.signatureOnly) {
     context.functions.push(functionDeclaration);
+    context.scope.declare(functionDeclaration.name, "function");
+    context.scope.set(functionDeclaration.name);
 
-    context.output.appendLine(" {");
-    context.output.indent();
+    context.output.append(" ");
 
     if (functionDeclaration.body) {
       emitBlock(context, functionDeclaration.body);
     }
 
-    context.output.unindent();
-    context.output.appendLine("}");
+    context.output.appendLine();
     context.output.appendLine();
   } else {
     context.output.appendLine(";");
@@ -358,11 +382,13 @@ function emitVariableDeclarationList(
     context.output.append(" ");
     emitIdentifier(context, variableDeclaration.name as ts.Identifier);
 
-    context.scope().declare(variableDeclaration.name as ts.Identifier, type);
+    context.scope.declare(variableDeclaration.name as ts.Identifier, type);
 
     if (variableDeclaration.initializer) {
       context.output.append(" = ");
       emitExpression(context, variableDeclaration.initializer);
+
+      context.scope.set(variableDeclaration.name as ts.Identifier);
     }
   }
 }

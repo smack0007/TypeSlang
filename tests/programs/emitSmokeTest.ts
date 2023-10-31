@@ -1,6 +1,13 @@
 // This program should invoke each function in emit.ts at least once.
 
+function sayHello(name: string, age: number): void {
+  console.info(`Hello ${name}, you are ${age} years old!`);
+}
+
 function main(): i32 {
+  sayHello("Joe", 42);
+  sayHello("Bob", 42 / 2);
+
   arrays();
 
   const name = "World";
