@@ -9,7 +9,42 @@ function main(): i32 {
   sayHello("Bob", 42 / 2);
 
   arrays();
+  booleans();
+  doWhile();
 
+  return 0;
+}
+
+function arrays(): void {
+  const data = [1, 2, 3, 4];
+  console.info(data, data.length);
+  console.info(data.pop());
+  data.push(5);
+  console.info(data, data.length);
+}
+
+function booleans(): void {
+  let condition = !false;
+  if (condition) {
+    console.info("Condition is true.");
+  } else {
+    console.info("Condition is false.");
+  }
+  condition = !true;
+  if (condition) {
+    console.info("Condition is true.");
+  } else {
+    console.info("Condition is false.");
+  }
+  condition = !!true;
+  if (condition) {
+    console.info("Condition is true.");
+  } else {
+    console.info("Condition is false.");
+  }
+}
+
+function doWhile(): void {
   const name = "World";
   let counter = 1;
   do {
@@ -20,13 +55,4 @@ function main(): i32 {
     }
     counter += 1;
   } while (counter <= 30);
-  return 0;
-}
-
-function arrays(): void {
-  const data = [1, 2, 3, 4];
-  console.info(data, data.length);
-  console.info(data.pop());
-  data.push(5);
-  console.info(data, data.length);
 }

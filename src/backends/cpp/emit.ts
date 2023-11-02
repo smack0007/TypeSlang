@@ -98,6 +98,12 @@ function mapType(context: EmitContext, type: ts.Type): string {
     typeName = `Array<${typeName}>`;
   }
 
+  switch (typeName) {
+    case "boolean":
+      typeName = "bool";
+      break;
+  }
+
   return typeName;
 }
 
@@ -427,6 +433,10 @@ function emitExpression(context: EmitContext, expression: ts.Expression): void {
       emitNumericLiteral(context, expression as ts.NumericLiteral);
       break;
 
+    case ts.SyntaxKind.PrefixUnaryExpression:
+      emitPrefixUnaryExpression(context, expression as ts.PrefixUnaryExpression);
+      break;
+
     case ts.SyntaxKind.PostfixUnaryExpression:
       emitPostfixUnaryExpression(context, expression as ts.PostfixUnaryExpression);
       break;
@@ -441,6 +451,11 @@ function emitExpression(context: EmitContext, expression: ts.Expression): void {
 
     case ts.SyntaxKind.TemplateExpression:
       emitTemplateExpression(context, expression as ts.TemplateExpression);
+      break;
+
+    case ts.SyntaxKind.TrueKeyword:
+    case ts.SyntaxKind.FalseKeyword:
+      emitBooleanLiteral(context, expression as ts.BooleanLiteral);
       break;
 
     default:
@@ -477,6 +492,10 @@ function emitBinaryExpression(context: EmitContext, binaryExpression: ts.BinaryE
 
     case ts.SyntaxKind.AsteriskEqualsToken:
       context.output.append(" *= ");
+      break;
+
+    case ts.SyntaxKind.FirstAssignment:
+      context.output.append(" = ");
       break;
 
     case ts.SyntaxKind.GreaterThanToken:
@@ -532,6 +551,14 @@ function emitBinaryExpression(context: EmitContext, binaryExpression: ts.BinaryE
   emitExpression(context, binaryExpression.right);
 }
 
+function emitBooleanLiteral(context: EmitContext, booleanLiteral: ts.BooleanLiteral): void {
+  if (booleanLiteral.kind === ts.SyntaxKind.TrueKeyword) {
+    context.output.append("true");
+  } else {
+    context.output.append("false");
+  }
+}
+
 function emitCallExpression(context: EmitContext, callExpression: ts.CallExpression): void {
   try {
     context.isEmittingCallExpressionExpression = true;
@@ -562,16 +589,38 @@ function emitElementAccessExpression(context: EmitContext, elementAccessExpressi
   context.output.append("]");
 }
 
-function emitPostfixUnaryExpression(context: EmitContext, postfixUnaryExpression: ts.PostfixUnaryExpression): void {
-  emitExpression(context, postfixUnaryExpression.operand);
+function emitPrefixUnaryExpression(context: EmitContext, prefixUnaryExpression: ts.PrefixUnaryExpression): void {
+  switch (prefixUnaryExpression.operator) {
+    case ts.SyntaxKind.ExclamationToken:
+      context.output.append("!");
+      break;
 
-  switch (postfixUnaryExpression.operator) {
-    case ts.SyntaxKind.PlusPlusToken:
-      context.output.append("++");
+    case ts.SyntaxKind.MinusToken:
+      context.output.append("-");
       break;
 
     case ts.SyntaxKind.MinusMinusToken:
       context.output.append("--");
+      break;
+
+    case ts.SyntaxKind.PlusPlusToken:
+      context.output.append("++");
+      break;
+  }
+
+  emitExpression(context, prefixUnaryExpression.operand);
+}
+
+function emitPostfixUnaryExpression(context: EmitContext, postfixUnaryExpression: ts.PostfixUnaryExpression): void {
+  emitExpression(context, postfixUnaryExpression.operand);
+
+  switch (postfixUnaryExpression.operator) {
+    case ts.SyntaxKind.MinusMinusToken:
+      context.output.append("--");
+      break;
+
+    case ts.SyntaxKind.PlusPlusToken:
+      context.output.append("++");
       break;
   }
 }
