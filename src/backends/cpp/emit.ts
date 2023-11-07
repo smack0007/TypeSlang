@@ -70,7 +70,7 @@ export class EmitError extends Error {
   constructor(context: EmitContext, public readonly node: ts.Node, message: string) {
     const { line, character } = context.sourceFile.getLineAndCharacterOfPosition(node.getStart(context.sourceFile));
 
-    super(`(${line}, ${character}): ${message}`);
+    super(`(${line + 1}, ${character}): ${message}`);
   }
 }
 
@@ -78,7 +78,7 @@ function nodeKindString(node: ts.Node): string {
   return ts.SyntaxKind[node.kind];
 }
 
-function mapType(context: EmitContext, type: ts.Type): string {
+function mapType(context: EmitContext, node: ts.Node, type: ts.Type, initializer: ts.Expression | undefined): string {
   let typeName = context.typeChecker.typeToString(type);
 
   if (typeName.startsWith('"') && typeName.endsWith('"')) {
@@ -90,7 +90,11 @@ function mapType(context: EmitContext, type: ts.Type): string {
   }
 
   if (isFirstCharacterDigit(typeName)) {
-    typeName = "i32";
+    if (typeName.includes(".")) {
+      typeName = "f64";
+    } else {
+      typeName = "i32";
+    }
   }
 
   if (typeName.endsWith("[]")) {
@@ -104,22 +108,30 @@ function mapType(context: EmitContext, type: ts.Type): string {
       break;
   }
 
+  if (["any"].includes(typeName)) {
+    throw new EmitError(context, node, `Type "${typeName}" is unable to be emitted.`);
+  }
+
   return typeName;
 }
 
-function getTypeFromNode(context: EmitContext, node: ts.Node): string {
+function getTypeFromNode(context: EmitContext, node: ts.Node, initializer?: ts.Expression): string {
   const type = context.typeChecker.getTypeAtLocation(node);
-  return mapType(context, type);
+  return mapType(context, node, type, initializer);
 }
 
 function getFunctionReturnType(context: EmitContext, functionDeclaration: ts.FunctionDeclaration): string {
   const signature = context.typeChecker.getSignatureFromDeclaration(functionDeclaration);
-  return mapType(context, signature!.getReturnType());
+  return mapType(context, functionDeclaration, signature!.getReturnType(), undefined);
 }
 
-function getFunctionParameterType(context: EmitContext, parameter: ts.ParameterDeclaration): string {
+function getFunctionParameterType(
+  context: EmitContext,
+  parameter: ts.ParameterDeclaration,
+  initializer?: ts.Expression,
+): string {
   const type = context.typeChecker.getTypeAtLocation(parameter);
-  return mapType(context, type);
+  return mapType(context, parameter, type, initializer);
 }
 
 export async function emit(typeChecker: ts.TypeChecker, sourceFile: ts.SourceFile): Promise<EmitResult> {
@@ -382,7 +394,7 @@ function emitVariableDeclarationList(
   const { isConst } = options;
 
   for (const variableDeclaration of variableDeclarationList.declarations) {
-    const type = getTypeFromNode(context, variableDeclaration);
+    const type = getTypeFromNode(context, variableDeclaration, variableDeclaration.initializer);
 
     context.output.append(type);
     context.output.append(" ");
@@ -413,6 +425,10 @@ function emitExpression(context: EmitContext, expression: ts.Expression): void {
       emitArrayLiteralExpression(context, expression as ts.ArrayLiteralExpression);
       break;
 
+    case ts.SyntaxKind.AsExpression:
+      emitAsExpression(context, expression as ts.AsExpression);
+      break;
+
     case ts.SyntaxKind.BinaryExpression:
       emitBinaryExpression(context, expression as ts.BinaryExpression);
       break;
@@ -431,6 +447,10 @@ function emitExpression(context: EmitContext, expression: ts.Expression): void {
 
     case ts.SyntaxKind.NumericLiteral:
       emitNumericLiteral(context, expression as ts.NumericLiteral);
+      break;
+
+    case ts.SyntaxKind.ParenthesizedExpression:
+      emitParenthesizedExpression(context, expression as ts.ParenthesizedExpression);
       break;
 
     case ts.SyntaxKind.PrefixUnaryExpression:
@@ -480,6 +500,26 @@ function emitArrayLiteralExpression(context: EmitContext, arrayLiteralExpression
   }
 
   context.output.append(` }, ${arrayLiteralExpression.elements.length})`);
+}
+
+function emitAsExpression(context: EmitContext, asExpression: ts.AsExpression): void {
+  const type = getTypeFromNode(context, asExpression.type);
+
+  if (asExpression.expression.kind === ts.SyntaxKind.NumericLiteral && (type === "f32" || type === "f64")) {
+    emitNumericLiteral(context, asExpression.expression as ts.NumericLiteral);
+
+    const hasDot = (asExpression.expression as ts.NumericLiteral).text.includes(".");
+    if (!hasDot) {
+      context.output.append(".");
+    }
+
+    if (type === "f32") {
+      context.output.append("f");
+    }
+  } else {
+    emitType(context, asExpression.type);
+    emitExpression(context, asExpression.expression);
+  }
 }
 
 function emitBinaryExpression(context: EmitContext, binaryExpression: ts.BinaryExpression): void {
@@ -652,6 +692,12 @@ function emitNumericLiteral(context: EmitContext, numcericLiteral: ts.NumericLit
   context.output.append(numcericLiteral.text);
 }
 
+function emitParenthesizedExpression(context: EmitContext, parenthesizedExpression: ts.ParenthesizedExpression): void {
+  context.output.append("(");
+  emitExpression(context, parenthesizedExpression.expression);
+  context.output.append(")");
+}
+
 function emitStringLiteral(context: EmitContext, stringLiteral: ts.StringLiteral): void {
   context.output.append(`String("${stringLiteral.text}", ${stringLiteral.text.length.toString()})`);
 }
@@ -684,4 +730,8 @@ function emitTemplateExpression(context: EmitContext, templateExpression: ts.Tem
   }
 
   context.output.append(")");
+}
+
+function emitType(context: EmitContext, type: ts.TypeNode): void {
+  context.output.append(getTypeFromNode(context, type));
 }

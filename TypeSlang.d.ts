@@ -1,3 +1,5 @@
+type f32 = number;
+type f64 = number;
 type i8 = number;
 type i16 = number;
 type i32 = number;

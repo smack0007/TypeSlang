@@ -8,9 +8,10 @@ function main(): i32 {
   sayHello("Joe", 42);
   sayHello("Bob", 42 / 2);
 
-  arrays();
-  booleans();
-  doWhile();
+  // arrays();
+  // booleans();
+  // doWhile();
+  floats();
 
   return 0;
 }
@@ -55,4 +56,12 @@ function doWhile(): void {
     }
     counter += 1;
   } while (counter <= 30);
+}
+
+function floats(): void {
+  const value = 12.34;
+  const value2: f32 = 12.34 as f32;
+  const value3: f64 = 12.34;
+  const value4: f32 = (12 as f32) + (0.34 as f32);
+  console.info(value, value2, value3);
 }

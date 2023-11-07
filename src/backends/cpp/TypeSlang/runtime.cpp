@@ -4,6 +4,8 @@
 #include <fmt/core.h>
 
 typedef int32_t i32;
+typedef float_t f32;
+typedef double_t f64;
 
 #include "array.cpp"
 #include "console.cpp"
