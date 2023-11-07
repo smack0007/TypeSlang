@@ -63,5 +63,6 @@ function floats(): void {
   const value2: f32 = 12.34 as f32;
   const value3: f64 = 12.34;
   const value4: f32 = (12 as f32) + (0.34 as f32);
-  console.info(value, value2, value3);
+  const value5: f64 = value + value2 + value3 + value4;
+  console.info(value, value2, value3, value4, value5);
 }
