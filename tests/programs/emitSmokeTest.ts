@@ -11,7 +11,8 @@ function main(): i32 {
   // arrays();
   // booleans();
   // doWhile();
-  floats();
+  // floats();
+  structs();
 
   return 0;
 }
@@ -65,4 +66,14 @@ function floats(): void {
   const value4: f32 = (12 as f32) + (0.34 as f32);
   const value5: f64 = value + value2 + value3 + value4;
   console.info(value, value2, value3, value4, value5);
+}
+
+interface Point {
+  x: f64;
+  y: f64;
+}
+
+function structs(): void {
+  const p1: Point = { x: 1.2, y: 3.4 };
+  console.info(`(${p1.x}, ${p1.y})`);
 }

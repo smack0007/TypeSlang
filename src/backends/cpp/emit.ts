@@ -31,7 +31,8 @@ class EmitContext {
   private _outputStack = new Stack<StringBuilder>([new StringBuilder()]);
   private _scopeStack = new Stack<VariableScope>([new VariableScope()]);
 
-  public functions: ts.FunctionDeclaration[] = [];
+  public readonly interfaces: ts.InterfaceDeclaration[] = [];
+  public readonly functions: ts.FunctionDeclaration[] = [];
 
   public isEmittingCallExpressionExpression = false;
 
@@ -134,10 +135,22 @@ function getFunctionParameterType(
   return mapType(context, parameter, type, initializer);
 }
 
+function shouldEmitParenthesisForPropertyAccessExpression(context: EmitContext, propertySourceType: string): boolean {
+  // TODO: This isn't sustainable obviously. Put some real logic behind this.
+  if (propertySourceType.startsWith("Array<") || propertySourceType == "string") {
+    return true;
+  }
+
+  return false;
+}
+
 export async function emit(typeChecker: ts.TypeChecker, sourceFile: ts.SourceFile): Promise<EmitResult> {
   const context = new EmitContext(typeChecker, sourceFile);
 
   await emitPreamble(context);
+
+  const forwardDeclaraedStructs = context.output.insertPlaceholder();
+  forwardDeclaraedStructs.appendLine("// Structs");
 
   const fowardDeclaredFunctions = context.output.insertPlaceholder();
   fowardDeclaredFunctions.appendLine("// Functions");
@@ -145,6 +158,12 @@ export async function emit(typeChecker: ts.TypeChecker, sourceFile: ts.SourceFil
   for (const statement of sourceFile.statements) {
     emitTopLevelStatement(context, statement);
   }
+
+  context.pushOutput(forwardDeclaraedStructs);
+  for (const _interface of context.interfaces) {
+    emitInterfaceDeclaration(context, _interface, { mode: EmitInterfaceDeclarationMode.Struct });
+  }
+  context.popOutput();
 
   context.pushOutput(fowardDeclaredFunctions);
   for (const func of context.functions) {
@@ -164,12 +183,16 @@ async function emitPreamble(context: EmitContext): Promise<void> {
 
 function emitTopLevelStatement(context: EmitContext, statement: ts.Statement): void {
   switch (statement.kind) {
+    case ts.SyntaxKind.FunctionDeclaration:
+      emitFunctionDeclaration(context, statement as ts.FunctionDeclaration);
+      break;
+
     case ts.SyntaxKind.ImportDeclaration:
       emitImportDeclaration(context, statement as ts.ImportDeclaration);
       break;
 
-    case ts.SyntaxKind.FunctionDeclaration:
-      emitFunctionDeclaration(context, statement as ts.FunctionDeclaration);
+    case ts.SyntaxKind.InterfaceDeclaration:
+      emitInterfaceDeclaration(context, statement as ts.InterfaceDeclaration);
       break;
 
     default:
@@ -179,22 +202,6 @@ function emitTopLevelStatement(context: EmitContext, statement: ts.Statement): v
         `Failed to emit ${nodeKindString(statement)} in ${emitTopLevelStatement.name}.`,
       );
   }
-}
-
-function emitImportDeclaration(context: EmitContext, importDeclaration: ts.ImportDeclaration): void {
-  if (
-    importDeclaration.importClause?.name?.escapedText === "std" &&
-    ts.isStringLiteral(importDeclaration.moduleSpecifier) &&
-    importDeclaration.moduleSpecifier.text === "std"
-  ) {
-    return;
-  }
-
-  throw new EmitError(
-    context,
-    importDeclaration,
-    `Failed to emit ${nodeKindString(importDeclaration)} in ${emitImportDeclaration.name}.`,
-  );
 }
 
 interface EmitFunctionDeclarationOptions {
@@ -241,6 +248,56 @@ function emitFunctionDeclaration(
     context.output.appendLine();
   } else {
     context.output.appendLine(";");
+  }
+}
+
+function emitImportDeclaration(context: EmitContext, importDeclaration: ts.ImportDeclaration): void {
+  if (
+    importDeclaration.importClause?.name?.escapedText === "std" &&
+    ts.isStringLiteral(importDeclaration.moduleSpecifier) &&
+    importDeclaration.moduleSpecifier.text === "std"
+  ) {
+    return;
+  }
+
+  throw new EmitError(
+    context,
+    importDeclaration,
+    `Failed to emit ${nodeKindString(importDeclaration)} in ${emitImportDeclaration.name}.`,
+  );
+}
+
+enum EmitInterfaceDeclarationMode {
+  None,
+  Struct,
+}
+
+interface EmitInterfaceDeclarationOptions {
+  mode?: EmitInterfaceDeclarationMode;
+}
+
+function emitInterfaceDeclaration(
+  context: EmitContext,
+  interfaceDeclaration: ts.InterfaceDeclaration,
+  options: EmitInterfaceDeclarationOptions = {},
+): void {
+  options.mode ??= EmitInterfaceDeclarationMode.None;
+
+  if (options.mode === EmitInterfaceDeclarationMode.None) {
+    context.interfaces.push(interfaceDeclaration);
+  } else if (options.mode === EmitInterfaceDeclarationMode.Struct) {
+    context.output.appendLine(`struct ${interfaceDeclaration.name.escapedText} {`);
+    context.output.indent();
+
+    for (const member of interfaceDeclaration.members) {
+      const memberType = getTypeFromNode(context, member);
+      context.output.append(`${memberType} `);
+      emitIdentifier(context, member.name as ts.Identifier);
+      context.output.appendLine(";");
+    }
+
+    context.output.unindent();
+    context.output.appendLine("};");
   }
 }
 
@@ -447,6 +504,10 @@ function emitExpression(context: EmitContext, expression: ts.Expression): void {
 
     case ts.SyntaxKind.NumericLiteral:
       emitNumericLiteral(context, expression as ts.NumericLiteral);
+      break;
+
+    case ts.SyntaxKind.ObjectLiteralExpression:
+      emitObjectLiteralExpression(context, expression as ts.ObjectLiteralExpression);
       break;
 
     case ts.SyntaxKind.ParenthesizedExpression:
@@ -675,7 +736,13 @@ function emitPropertyAccessExpression(
 
   // NOTE: Properties are not supported in C++ so we have to call
   // a method.
-  if (!context.isEmittingCallExpressionExpression) {
+  if (
+    !context.isEmittingCallExpressionExpression &&
+    shouldEmitParenthesisForPropertyAccessExpression(
+      context,
+      getTypeFromNode(context, propertyAccessExpression.expression),
+    )
+  ) {
     context.output.append("()");
   }
 }
@@ -690,6 +757,31 @@ function emitIdentifier(context: EmitContext, identifier: ts.Identifier | ts.Pri
 
 function emitNumericLiteral(context: EmitContext, numcericLiteral: ts.NumericLiteral): void {
   context.output.append(numcericLiteral.text);
+}
+
+function emitObjectLiteralExpression(context: EmitContext, objectLiteralExpression: ts.ObjectLiteralExpression): void {
+  context.output.append("{");
+
+  for (let i = 0; i < objectLiteralExpression.properties.length; i++) {
+    const property = objectLiteralExpression.properties[i] as ts.PropertyAssignment;
+
+    if (i != 0) {
+      context.output.append(", ");
+    } else {
+      context.output.append(" ");
+    }
+
+    context.output.append(".");
+    emitIdentifier(context, property.name as ts.Identifier);
+    context.output.append(" = ");
+    emitExpression(context, property.initializer);
+
+    if (i === objectLiteralExpression.properties.length - 1) {
+      context.output.append(" ");
+    }
+  }
+
+  context.output.append("}");
 }
 
 function emitParenthesizedExpression(context: EmitContext, parenthesizedExpression: ts.ParenthesizedExpression): void {
