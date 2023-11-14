@@ -4,13 +4,14 @@ import process from "node:process";
 import ts from "typescript";
 import { emit, EmitError, type EmitResult } from "./backends/cpp/emit.js";
 import { ensureDirectoryExists } from "./fs.js";
+import { ROOT_PATH } from "./constants.js";
 
 async function main(args: string[]): Promise<i32> {
   // TODO: Check these
   const inputFilePath = args[0] as string;
   const outputFilePath = args[1] as string;
 
-  const program = ts.createProgram([inputFilePath], {
+  const program = ts.createProgram([path.join(ROOT_PATH, "TypeSlang.d.ts"), inputFilePath], {
     target: ts.ScriptTarget.ES2022,
   });
 

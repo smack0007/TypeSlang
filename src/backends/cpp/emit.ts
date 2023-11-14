@@ -1,4 +1,4 @@
-import ts, { type Identifier, type TemplateLiteralLikeNode } from "typescript";
+import ts from "typescript";
 import { StringBuilder } from "../../stringBuilder.js";
 import { hasFlag, isFirstCharacterDigit as isFirstCharacterDigit } from "../../utils.js";
 import { Stack } from "../../stack.js";
@@ -116,9 +116,31 @@ function mapType(context: EmitContext, node: ts.Node, type: ts.Type, initializer
   return typeName;
 }
 
-function getTypeFromNode(context: EmitContext, node: ts.Node, initializer?: ts.Expression): string {
-  const type = context.typeChecker.getTypeAtLocation(node);
-  return mapType(context, node, type, initializer);
+function hasTypeProperty(node: ts.Node): node is ts.Node & { type: ts.TypeNode } {
+  return !!(node as unknown as { type: ts.Type }).type;
+}
+
+function hasTypeNameProperty(node: ts.Node): node is ts.Node & { type: ts.TypeNode } {
+  return !!(node as unknown as { type: ts.Type }).type;
+}
+
+function getTypeFromNode(context: EmitContext, node: ts.Node, initializer?: ts.Expression): ts.Type {
+  return context.typeChecker.getTypeAtLocation(node);
+}
+
+function getTypeAsStringFromNode(context: EmitContext, node: ts.Node, initializer?: ts.Expression): string {
+  let result: string | undefined = undefined;
+
+  if (hasTypeProperty(node)) {
+    result = node.type.getText();
+  }
+
+  if (result === undefined) {
+    const type = getTypeFromNode(context, node);
+    result = mapType(context, node, type, initializer);
+  }
+
+  return result;
 }
 
 function getFunctionReturnType(context: EmitContext, functionDeclaration: ts.FunctionDeclaration): string {
@@ -290,7 +312,7 @@ function emitInterfaceDeclaration(
     context.output.indent();
 
     for (const member of interfaceDeclaration.members) {
-      const memberType = getTypeFromNode(context, member);
+      const memberType = getTypeAsStringFromNode(context, member);
       context.output.append(`${memberType} `);
       emitIdentifier(context, member.name as ts.Identifier);
       context.output.appendLine(";");
@@ -451,7 +473,7 @@ function emitVariableDeclarationList(
   const { isConst } = options;
 
   for (const variableDeclaration of variableDeclarationList.declarations) {
-    const type = getTypeFromNode(context, variableDeclaration, variableDeclaration.initializer);
+    const type = getTypeAsStringFromNode(context, variableDeclaration, variableDeclaration.initializer);
 
     context.output.append(type);
     context.output.append(" ");
@@ -549,7 +571,7 @@ function emitExpression(context: EmitContext, expression: ts.Expression): void {
 }
 
 function emitArrayLiteralExpression(context: EmitContext, arrayLiteralExpression: ts.ArrayLiteralExpression): void {
-  const type = getTypeFromNode(context, arrayLiteralExpression);
+  const type = getTypeAsStringFromNode(context, arrayLiteralExpression);
 
   context.output.append(`${type}({ `);
 
@@ -564,7 +586,7 @@ function emitArrayLiteralExpression(context: EmitContext, arrayLiteralExpression
 }
 
 function emitAsExpression(context: EmitContext, asExpression: ts.AsExpression): void {
-  const type = getTypeFromNode(context, asExpression.type);
+  const type = getTypeAsStringFromNode(context, asExpression);
 
   if (asExpression.expression.kind === ts.SyntaxKind.NumericLiteral && (type === "f32" || type === "f64")) {
     emitNumericLiteral(context, asExpression.expression as ts.NumericLiteral);
@@ -578,7 +600,9 @@ function emitAsExpression(context: EmitContext, asExpression: ts.AsExpression): 
       context.output.append("f");
     }
   } else {
+    context.output.append("(");
     emitType(context, asExpression.type);
+    context.output.append(")");
     emitExpression(context, asExpression.expression);
   }
 }
@@ -740,7 +764,7 @@ function emitPropertyAccessExpression(
     !context.isEmittingCallExpressionExpression &&
     shouldEmitParenthesisForPropertyAccessExpression(
       context,
-      getTypeFromNode(context, propertyAccessExpression.expression),
+      getTypeAsStringFromNode(context, propertyAccessExpression.expression),
     )
   ) {
     context.output.append("()");
@@ -760,6 +784,8 @@ function emitNumericLiteral(context: EmitContext, numcericLiteral: ts.NumericLit
 }
 
 function emitObjectLiteralExpression(context: EmitContext, objectLiteralExpression: ts.ObjectLiteralExpression): void {
+  const type = getTypeFromNode(context, objectLiteralExpression);
+
   context.output.append("{");
 
   for (let i = 0; i < objectLiteralExpression.properties.length; i++) {
@@ -825,5 +851,5 @@ function emitTemplateExpression(context: EmitContext, templateExpression: ts.Tem
 }
 
 function emitType(context: EmitContext, type: ts.TypeNode): void {
-  context.output.append(getTypeFromNode(context, type));
+  context.output.append(getTypeAsStringFromNode(context, type));
 }
