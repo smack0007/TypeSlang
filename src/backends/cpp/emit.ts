@@ -2,6 +2,7 @@ import ts from "typescript";
 import { StringBuilder } from "../../stringBuilder.js";
 import { hasFlag, isFirstCharacterDigit as isFirstCharacterDigit } from "../../utils.js";
 import { Stack } from "../../stack.js";
+import { transformInterfaceDeclarationToTypeAliasDeclaration } from "../../tsUtils.js";
 
 class VariableData {
   public isInitialized: boolean = false;
@@ -31,7 +32,7 @@ class EmitContext {
   private _outputStack = new Stack<StringBuilder>([new StringBuilder()]);
   private _scopeStack = new Stack<VariableScope>([new VariableScope()]);
 
-  public readonly interfaces: ts.InterfaceDeclaration[] = [];
+  public readonly types: ts.TypeAliasDeclaration[] = [];
   public readonly functions: ts.FunctionDeclaration[] = [];
 
   public isEmittingCallExpressionExpression = false;
@@ -75,8 +76,12 @@ export class EmitError extends Error {
   }
 }
 
+function kindString(kind: ts.SyntaxKind): string {
+  return ts.SyntaxKind[kind];
+}
+
 function nodeKindString(node: ts.Node): string {
-  return ts.SyntaxKind[node.kind];
+  return kindString(node.kind);
 }
 
 function mapType(context: EmitContext, node: ts.Node, type: ts.Type, initializer: ts.Expression | undefined): string {
@@ -117,10 +122,6 @@ function mapType(context: EmitContext, node: ts.Node, type: ts.Type, initializer
 }
 
 function hasTypeProperty(node: ts.Node): node is ts.Node & { type: ts.TypeNode } {
-  return !!(node as unknown as { type: ts.Type }).type;
-}
-
-function hasTypeNameProperty(node: ts.Node): node is ts.Node & { type: ts.TypeNode } {
   return !!(node as unknown as { type: ts.Type }).type;
 }
 
@@ -182,8 +183,8 @@ export async function emit(typeChecker: ts.TypeChecker, sourceFile: ts.SourceFil
   }
 
   context.pushOutput(forwardDeclaraedStructs);
-  for (const _interface of context.interfaces) {
-    emitInterfaceDeclaration(context, _interface, { mode: EmitInterfaceDeclarationMode.Struct });
+  for (const type of context.types.filter(x => x.type.kind === ts.SyntaxKind.TypeLiteral)) {
+    emitTypeAliasDeclaration(context, type, { mode: EmitTypeAliasDeclarationMode.Struct });
   }
   context.popOutput();
 
@@ -215,6 +216,10 @@ function emitTopLevelStatement(context: EmitContext, statement: ts.Statement): v
 
     case ts.SyntaxKind.InterfaceDeclaration:
       emitInterfaceDeclaration(context, statement as ts.InterfaceDeclaration);
+      break;
+
+    case ts.SyntaxKind.TypeAliasDeclaration:
+      emitTypeAliasDeclaration(context, statement as ts.TypeAliasDeclaration);
       break;
 
     default:
@@ -289,29 +294,37 @@ function emitImportDeclaration(context: EmitContext, importDeclaration: ts.Impor
   );
 }
 
-enum EmitInterfaceDeclarationMode {
+function emitInterfaceDeclaration(context: EmitContext, interfaceDeclaration: ts.InterfaceDeclaration): void {
+  context.types.push(transformInterfaceDeclarationToTypeAliasDeclaration(interfaceDeclaration));
+}
+
+enum EmitTypeAliasDeclarationMode {
   None,
   Struct,
 }
 
-interface EmitInterfaceDeclarationOptions {
-  mode?: EmitInterfaceDeclarationMode;
+interface EmitTypeAliasDeclarationOptions {
+  mode?: EmitTypeAliasDeclarationMode;
 }
 
-function emitInterfaceDeclaration(
+function emitTypeAliasDeclaration(
   context: EmitContext,
-  interfaceDeclaration: ts.InterfaceDeclaration,
-  options: EmitInterfaceDeclarationOptions = {},
+  typeAliasDeclaration: ts.TypeAliasDeclaration,
+  options: EmitTypeAliasDeclarationOptions = {},
 ): void {
-  options.mode ??= EmitInterfaceDeclarationMode.None;
+  options.mode ??= EmitTypeAliasDeclarationMode.None;
 
-  if (options.mode === EmitInterfaceDeclarationMode.None) {
-    context.interfaces.push(interfaceDeclaration);
-  } else if (options.mode === EmitInterfaceDeclarationMode.Struct) {
-    context.output.appendLine(`struct ${interfaceDeclaration.name.escapedText} {`);
+  if (options.mode === EmitTypeAliasDeclarationMode.None) {
+    context.types.push(typeAliasDeclaration);
+  } else if (options.mode === EmitTypeAliasDeclarationMode.Struct) {
+    if (typeAliasDeclaration.type.kind !== ts.SyntaxKind.TypeLiteral) {
+      throw new EmitError(context, typeAliasDeclaration, `${nodeKindString(typeAliasDeclaration)} cannot be emitted as a struct because 'type' is not a ${kindString(ts.SyntaxKind.TypeLiteral)} in ${emitImportDeclaration.name}.`);
+    }
+    
+    context.output.appendLine(`struct ${typeAliasDeclaration.name.escapedText} {`);
     context.output.indent();
 
-    for (const member of interfaceDeclaration.members) {
+    for (const member of (typeAliasDeclaration.type as ts.TypeLiteralNode).members) {
       const memberType = getTypeAsStringFromNode(context, member);
       context.output.append(`${memberType} `);
       emitIdentifier(context, member.name as ts.Identifier);

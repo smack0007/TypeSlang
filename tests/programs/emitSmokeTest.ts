@@ -73,7 +73,15 @@ interface Point {
   y: f64;
 }
 
+type Person = {
+  name: string;
+  age: i32;
+};
+
 function structs(): void {
   const p1: Point = { x: 1.2, y: 3.4 };
   console.info(`(${p1.x}, ${p1.y})`);
+
+  const person: Person = { name: "Bob Freeman", age: 42 };
+  console.info(`${person.name}, ${person.age}`);
 }
