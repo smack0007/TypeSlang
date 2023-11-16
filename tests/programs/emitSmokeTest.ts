@@ -1,5 +1,8 @@
 // This program should invoke each function in emit.ts at least once.
 
+const USER_NAME = "smack0007";
+const MAGIC_NUMBER = 42;
+
 type IsNotUsed = {
   task: string;
 };
@@ -9,14 +12,15 @@ function sayHello(name: string, age: number): void {
 }
 
 function main(): i32 {
-  //sayHello("Joe", 42);
-  //sayHello("Bob", 42 / 2);
+  sayHello(USER_NAME, MAGIC_NUMBER);
+  // sayHello("Bob", 42 / 2);
 
   // arrays();
   // booleans();
+  // whileLoop();
   // doWhile();
   // floats();
-  structs();
+  // structs();
 
   return 0;
 }
@@ -47,6 +51,18 @@ function booleans(): void {
     console.info("Condition is true.");
   } else {
     console.info("Condition is false.");
+  }
+}
+
+function whileLoop(): void {
+  let counter = 1;
+  while (counter <= 30) {
+    if (counter < 30) {
+      console.info(counter, "Hello World!");
+    } else {
+      console.info(counter, "Done.");
+    }
+    counter += 1;
   }
 }
 
