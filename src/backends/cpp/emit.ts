@@ -146,6 +146,10 @@ function emitTopLevelStatement(context: EmitContext, statement: ts.Statement): v
       emitTypeAliasDeclaration(context, statement as ts.TypeAliasDeclaration);
       break;
 
+    case ts.SyntaxKind.VariableStatement:
+      emitVariableStatement(context, statement as ts.VariableStatement);
+      break;
+
     default:
       throw new EmitError(
         context,
