@@ -185,15 +185,28 @@ function emitFunctionDeclaration(
   context.output.append(")");
 
   if (!options.signatureOnly) {
+    if (!functionDeclaration.body) {
+      throw new EmitError(
+        context,
+        functionDeclaration,
+        `Cannot emit ${nodeKindString(functionDeclaration)} with undefined body.`,
+      );
+    }
+
+    context.output.append(" ");
+
     context.functions.push(functionDeclaration);
     context.scope.declare(functionDeclaration.name, "function");
     context.scope.set(functionDeclaration.name);
 
-    context.output.append(" ");
-
-    if (functionDeclaration.body) {
-      emitBlock(context, functionDeclaration.body);
+    context.pushScope();
+    for (const parameter of functionDeclaration.parameters) {
+      const parameterType = getFunctionParameterType(context, parameter);
+      context.scope.declare(parameter.name as ts.Identifier, parameterType);
     }
+
+    emitBlock(context, functionDeclaration.body);
+    context.popScope();
 
     context.output.appendLine();
     context.output.appendLine();
@@ -203,14 +216,6 @@ function emitFunctionDeclaration(
 }
 
 function emitImportDeclaration(context: EmitContext, importDeclaration: ts.ImportDeclaration): void {
-  if (
-    importDeclaration.importClause?.name?.escapedText === "std" &&
-    ts.isStringLiteral(importDeclaration.moduleSpecifier) &&
-    importDeclaration.moduleSpecifier.text === "std"
-  ) {
-    return;
-  }
-
   throw new EmitError(
     context,
     importDeclaration,

@@ -9,8 +9,8 @@ function sayHello(name: string, age: number): void {
 }
 
 function main(): i32 {
-  sayHello("Joe", 42);
-  sayHello("Bob", 42 / 2);
+  //sayHello("Joe", 42);
+  //sayHello("Bob", 42 / 2);
 
   // arrays();
   // booleans();
@@ -86,6 +86,9 @@ function structs(): void {
   const p1: Point = { x: 1.2, y: 3.4 };
   console.info(`(${p1.x}, ${p1.y})`);
 
-  const person: Person = { name: "Bob Freeman", age: 42 };
-  console.info(`${person.name}, ${person.age}`);
+  greetPerson({ name: "Bob Freeman", age: 42 });
+}
+
+function greetPerson(person: Person): void {
+  console.info(`Hello ${person.name} you are ${person.age} years old.`);
 }
