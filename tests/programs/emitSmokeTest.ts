@@ -86,7 +86,11 @@ function structs(): void {
   const p1: Point = { x: 1.2, y: 3.4 };
   console.info(`(${p1.x}, ${p1.y})`);
 
-  greetPerson({ name: "Bob Freeman", age: 42 });
+  greetPerson(createPerson("Bob Freeman", 42));
+}
+
+function createPerson(name: string, age: number): Person {
+  return { name, age };
 }
 
 function greetPerson(person: Person): void {

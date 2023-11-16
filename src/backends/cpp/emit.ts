@@ -616,9 +616,9 @@ function emitBinaryExpression(context: EmitContext, binaryExpression: ts.BinaryE
       throw new EmitError(
         context,
         binaryExpression,
-        `Failed to emit operatorToken ${nodeKindString(binaryExpression.operatorToken)} for ${nodeKindString(
-          binaryExpression,
-        )} in ${emitBinaryExpression.name}.`,
+        `Failed to emit ${nodeKindString(binaryExpression.operatorToken)} for ${nodeKindString(binaryExpression)} in ${
+          emitBinaryExpression.name
+        }.`,
       );
   }
 
@@ -680,6 +680,13 @@ function emitPrefixUnaryExpression(context: EmitContext, prefixUnaryExpression: 
     case ts.SyntaxKind.PlusPlusToken:
       context.output.append("++");
       break;
+
+    default:
+      throw new EmitError(
+        context,
+        prefixUnaryExpression,
+        `Failed to emit ${ts.SyntaxKind[prefixUnaryExpression.operator]} in ${emitPrefixUnaryExpression.name}.`,
+      );
   }
 
   emitExpression(context, prefixUnaryExpression.operand);
@@ -696,6 +703,13 @@ function emitPostfixUnaryExpression(context: EmitContext, postfixUnaryExpression
     case ts.SyntaxKind.PlusPlusToken:
       context.output.append("++");
       break;
+
+    default:
+      throw new EmitError(
+        context,
+        postfixUnaryExpression,
+        `Failed to emit ${ts.SyntaxKind[postfixUnaryExpression.operator]} in ${emitPostfixUnaryExpression.name}.`,
+      );
   }
 }
 
@@ -738,7 +752,7 @@ function emitObjectLiteralExpression(context: EmitContext, objectLiteralExpressi
   context.output.append("{");
 
   for (let i = 0; i < objectLiteralExpression.properties.length; i++) {
-    const property = objectLiteralExpression.properties[i] as ts.PropertyAssignment;
+    const property = objectLiteralExpression.properties[i];
 
     if (i != 0) {
       context.output.append(", ");
@@ -749,7 +763,18 @@ function emitObjectLiteralExpression(context: EmitContext, objectLiteralExpressi
     context.output.append(".");
     emitIdentifier(context, property.name as ts.Identifier);
     context.output.append(" = ");
-    emitExpression(context, property.initializer);
+
+    if (property.kind === ts.SyntaxKind.PropertyAssignment) {
+      emitExpression(context, property.initializer);
+    } else if (property.kind === ts.SyntaxKind.ShorthandPropertyAssignment) {
+      emitIdentifier(context, property.name as ts.Identifier);
+    } else {
+      throw new EmitError(
+        context,
+        property,
+        `Failed to emit ${nodeKindString(property)} in ${emitObjectLiteralExpression.name}.`,
+      );
+    }
 
     if (i === objectLiteralExpression.properties.length - 1) {
       context.output.append(" ");
