@@ -1,82 +1,10 @@
-import ts, { type Identifier, type TemplateLiteralLikeNode } from "typescript";
-import { StringBuilder } from "../../stringBuilder.js";
-import { hasFlag, isFirstCharacterDigit as isFirstCharacterDigit } from "../../utils.js";
-import { Stack } from "../../stack.js";
-
-class VariableData {
-  public isInitialized: boolean = false;
-
-  constructor(public type: string) {}
-}
-
-class VariableScope {
-  private _data: Map<string, VariableData> = new Map<string, VariableData>();
-
-  public declare(name: ts.Identifier, type: string): void {
-    if (this._data.has(name.escapedText as string)) {
-      throw new Error(`Variable ${name} is already declared.`);
-    }
-    this._data.set(name.escapedText as string, new VariableData(type));
-  }
-
-  public set(name: ts.Identifier): void {
-    if (!this._data.has(name.escapedText as string)) {
-      throw new Error(`Variable is not declared.`);
-    }
-    this._data.get(name.escapedText as string)!.isInitialized = true;
-  }
-}
-
-class EmitContext {
-  private _outputStack = new Stack<StringBuilder>([new StringBuilder()]);
-  private _scopeStack = new Stack<VariableScope>([new VariableScope()]);
-
-  public functions: ts.FunctionDeclaration[] = [];
-
-  public isEmittingCallExpressionExpression = false;
-
-  constructor(public readonly typeChecker: ts.TypeChecker, public readonly sourceFile: ts.SourceFile) {}
-
-  public get output(): StringBuilder {
-    return this._outputStack.top;
-  }
-
-  public pushOutput(output: StringBuilder): void {
-    this._outputStack.push(output);
-  }
-
-  public popOutput(): void {
-    this._outputStack.pop();
-  }
-
-  public pushScope(): void {
-    this._scopeStack.push(new VariableScope());
-  }
-
-  public popScope(): void {
-    this._scopeStack.pop();
-  }
-
-  public get scope(): VariableScope {
-    return this._scopeStack.top;
-  }
-}
-
-export interface EmitResult {
-  readonly output: string;
-}
-
-export class EmitError extends Error {
-  constructor(context: EmitContext, public readonly node: ts.Node, message: string) {
-    const { line, character } = context.sourceFile.getLineAndCharacterOfPosition(node.getStart(context.sourceFile));
-
-    super(`(${line + 1}, ${character}): ${message}`);
-  }
-}
-
-function nodeKindString(node: ts.Node): string {
-  return ts.SyntaxKind[node.kind];
-}
+import ts from "typescript";
+import { hasFlag, isFirstCharacterDigit } from "../../utils.js";
+import { kindString, nodeKindString, transformInterfaceDeclarationToTypeAliasDeclaration } from "../../tsUtils.js";
+import { EmitContext } from "../emitContext.js";
+import { EmitError } from "../emitError.js";
+import type { EmitResult } from "../emitResult.js";
+import { withIsUsed } from "../../markers.js";
 
 function mapType(context: EmitContext, node: ts.Node, type: ts.Type, initializer: ts.Expression | undefined): string {
   let typeName = context.typeChecker.typeToString(type);
@@ -115,9 +43,27 @@ function mapType(context: EmitContext, node: ts.Node, type: ts.Type, initializer
   return typeName;
 }
 
-function getTypeFromNode(context: EmitContext, node: ts.Node, initializer?: ts.Expression): string {
-  const type = context.typeChecker.getTypeAtLocation(node);
-  return mapType(context, node, type, initializer);
+function hasTypeProperty(node: ts.Node): node is ts.Node & { type: ts.TypeNode } {
+  return !!(node as unknown as { type: ts.Type }).type;
+}
+
+function getTypeFromNode(context: EmitContext, node: ts.Node, initializer?: ts.Expression): ts.Type {
+  return context.typeChecker.getTypeAtLocation(node);
+}
+
+function getTypeAsStringFromNode(context: EmitContext, node: ts.Node, initializer?: ts.Expression): string {
+  let result: string | undefined = undefined;
+
+  if (hasTypeProperty(node)) {
+    result = node.type.getText();
+  }
+
+  if (result === undefined) {
+    const type = getTypeFromNode(context, node);
+    result = mapType(context, node, type, initializer);
+  }
+
+  return result;
 }
 
 function getFunctionReturnType(context: EmitContext, functionDeclaration: ts.FunctionDeclaration): string {
@@ -134,10 +80,22 @@ function getFunctionParameterType(
   return mapType(context, parameter, type, initializer);
 }
 
+function shouldEmitParenthesisForPropertyAccessExpression(context: EmitContext, propertySourceType: string): boolean {
+  // TODO: This isn't sustainable obviously. Put some real logic behind this.
+  if (propertySourceType.startsWith("Array<") || propertySourceType == "string") {
+    return true;
+  }
+
+  return false;
+}
+
 export async function emit(typeChecker: ts.TypeChecker, sourceFile: ts.SourceFile): Promise<EmitResult> {
   const context = new EmitContext(typeChecker, sourceFile);
 
   await emitPreamble(context);
+
+  const forwardDeclaraedStructs = context.output.insertPlaceholder();
+  forwardDeclaraedStructs.appendLine("// Structs");
 
   const fowardDeclaredFunctions = context.output.insertPlaceholder();
   fowardDeclaredFunctions.appendLine("// Functions");
@@ -146,11 +104,19 @@ export async function emit(typeChecker: ts.TypeChecker, sourceFile: ts.SourceFil
     emitTopLevelStatement(context, statement);
   }
 
+  context.pushOutput(forwardDeclaraedStructs);
+  for (const type of context.types.filter((x) => x.isUsed && x.type.kind === ts.SyntaxKind.TypeLiteral)) {
+    emitTypeAliasDeclaration(context, type, { mode: EmitTypeAliasDeclarationMode.Struct });
+  }
+  context.popOutput();
+  forwardDeclaraedStructs.removeLine();
+
   context.pushOutput(fowardDeclaredFunctions);
   for (const func of context.functions) {
     emitFunctionDeclaration(context, func, { signatureOnly: true });
   }
   context.popOutput();
+  fowardDeclaredFunctions.appendLine();
 
   return {
     output: context.output.toString(),
@@ -164,12 +130,20 @@ async function emitPreamble(context: EmitContext): Promise<void> {
 
 function emitTopLevelStatement(context: EmitContext, statement: ts.Statement): void {
   switch (statement.kind) {
+    case ts.SyntaxKind.FunctionDeclaration:
+      emitFunctionDeclaration(context, statement as ts.FunctionDeclaration);
+      break;
+
     case ts.SyntaxKind.ImportDeclaration:
       emitImportDeclaration(context, statement as ts.ImportDeclaration);
       break;
 
-    case ts.SyntaxKind.FunctionDeclaration:
-      emitFunctionDeclaration(context, statement as ts.FunctionDeclaration);
+    case ts.SyntaxKind.InterfaceDeclaration:
+      emitInterfaceDeclaration(context, statement as ts.InterfaceDeclaration);
+      break;
+
+    case ts.SyntaxKind.TypeAliasDeclaration:
+      emitTypeAliasDeclaration(context, statement as ts.TypeAliasDeclaration);
       break;
 
     default:
@@ -179,22 +153,6 @@ function emitTopLevelStatement(context: EmitContext, statement: ts.Statement): v
         `Failed to emit ${nodeKindString(statement)} in ${emitTopLevelStatement.name}.`,
       );
   }
-}
-
-function emitImportDeclaration(context: EmitContext, importDeclaration: ts.ImportDeclaration): void {
-  if (
-    importDeclaration.importClause?.name?.escapedText === "std" &&
-    ts.isStringLiteral(importDeclaration.moduleSpecifier) &&
-    importDeclaration.moduleSpecifier.text === "std"
-  ) {
-    return;
-  }
-
-  throw new EmitError(
-    context,
-    importDeclaration,
-    `Failed to emit ${nodeKindString(importDeclaration)} in ${emitImportDeclaration.name}.`,
-  );
 }
 
 interface EmitFunctionDeclarationOptions {
@@ -227,20 +185,90 @@ function emitFunctionDeclaration(
   context.output.append(")");
 
   if (!options.signatureOnly) {
+    if (!functionDeclaration.body) {
+      throw new EmitError(
+        context,
+        functionDeclaration,
+        `Cannot emit ${nodeKindString(functionDeclaration)} with undefined body.`,
+      );
+    }
+
+    context.output.append(" ");
+
     context.functions.push(functionDeclaration);
     context.scope.declare(functionDeclaration.name, "function");
     context.scope.set(functionDeclaration.name);
 
-    context.output.append(" ");
-
-    if (functionDeclaration.body) {
-      emitBlock(context, functionDeclaration.body);
+    context.pushScope();
+    for (const parameter of functionDeclaration.parameters) {
+      const parameterType = getFunctionParameterType(context, parameter);
+      context.scope.declare(parameter.name as ts.Identifier, parameterType);
     }
+
+    emitBlock(context, functionDeclaration.body);
+    context.popScope();
 
     context.output.appendLine();
     context.output.appendLine();
   } else {
     context.output.appendLine(";");
+  }
+}
+
+function emitImportDeclaration(context: EmitContext, importDeclaration: ts.ImportDeclaration): void {
+  throw new EmitError(
+    context,
+    importDeclaration,
+    `Failed to emit ${nodeKindString(importDeclaration)} in ${emitImportDeclaration.name}.`,
+  );
+}
+
+function emitInterfaceDeclaration(context: EmitContext, interfaceDeclaration: ts.InterfaceDeclaration): void {
+  context.types.push(withIsUsed(transformInterfaceDeclarationToTypeAliasDeclaration(interfaceDeclaration)));
+}
+
+enum EmitTypeAliasDeclarationMode {
+  None,
+  Struct,
+}
+
+interface EmitTypeAliasDeclarationOptions {
+  mode?: EmitTypeAliasDeclarationMode;
+}
+
+function emitTypeAliasDeclaration(
+  context: EmitContext,
+  typeAliasDeclaration: ts.TypeAliasDeclaration,
+  options: EmitTypeAliasDeclarationOptions = {},
+): void {
+  options.mode ??= EmitTypeAliasDeclarationMode.None;
+
+  if (options.mode === EmitTypeAliasDeclarationMode.None) {
+    context.types.push(withIsUsed(typeAliasDeclaration));
+  } else if (options.mode === EmitTypeAliasDeclarationMode.Struct) {
+    if (typeAliasDeclaration.type.kind !== ts.SyntaxKind.TypeLiteral) {
+      throw new EmitError(
+        context,
+        typeAliasDeclaration,
+        `${nodeKindString(typeAliasDeclaration)} cannot be emitted as a struct because 'type' is not a ${kindString(
+          ts.SyntaxKind.TypeLiteral,
+        )} in ${emitImportDeclaration.name}.`,
+      );
+    }
+
+    context.output.appendLine(`struct ${typeAliasDeclaration.name.escapedText} {`);
+    context.output.indent();
+
+    for (const member of (typeAliasDeclaration.type as ts.TypeLiteralNode).members) {
+      const memberType = getTypeAsStringFromNode(context, member);
+      context.output.append(`${memberType} `);
+      emitIdentifier(context, member.name as ts.Identifier);
+      context.output.appendLine(";");
+    }
+
+    context.output.unindent();
+    context.output.appendLine("};");
+    context.output.appendLine();
   }
 }
 
@@ -394,7 +422,7 @@ function emitVariableDeclarationList(
   const { isConst } = options;
 
   for (const variableDeclaration of variableDeclarationList.declarations) {
-    const type = getTypeFromNode(context, variableDeclaration, variableDeclaration.initializer);
+    const type = getTypeAsStringFromNode(context, variableDeclaration, variableDeclaration.initializer);
 
     context.output.append(type);
     context.output.append(" ");
@@ -449,6 +477,10 @@ function emitExpression(context: EmitContext, expression: ts.Expression): void {
       emitNumericLiteral(context, expression as ts.NumericLiteral);
       break;
 
+    case ts.SyntaxKind.ObjectLiteralExpression:
+      emitObjectLiteralExpression(context, expression as ts.ObjectLiteralExpression);
+      break;
+
     case ts.SyntaxKind.ParenthesizedExpression:
       emitParenthesizedExpression(context, expression as ts.ParenthesizedExpression);
       break;
@@ -488,7 +520,7 @@ function emitExpression(context: EmitContext, expression: ts.Expression): void {
 }
 
 function emitArrayLiteralExpression(context: EmitContext, arrayLiteralExpression: ts.ArrayLiteralExpression): void {
-  const type = getTypeFromNode(context, arrayLiteralExpression);
+  const type = getTypeAsStringFromNode(context, arrayLiteralExpression);
 
   context.output.append(`${type}({ `);
 
@@ -503,7 +535,7 @@ function emitArrayLiteralExpression(context: EmitContext, arrayLiteralExpression
 }
 
 function emitAsExpression(context: EmitContext, asExpression: ts.AsExpression): void {
-  const type = getTypeFromNode(context, asExpression.type);
+  const type = getTypeAsStringFromNode(context, asExpression);
 
   if (asExpression.expression.kind === ts.SyntaxKind.NumericLiteral && (type === "f32" || type === "f64")) {
     emitNumericLiteral(context, asExpression.expression as ts.NumericLiteral);
@@ -517,7 +549,9 @@ function emitAsExpression(context: EmitContext, asExpression: ts.AsExpression): 
       context.output.append("f");
     }
   } else {
+    context.output.append("(");
     emitType(context, asExpression.type);
+    context.output.append(")");
     emitExpression(context, asExpression.expression);
   }
 }
@@ -582,9 +616,9 @@ function emitBinaryExpression(context: EmitContext, binaryExpression: ts.BinaryE
       throw new EmitError(
         context,
         binaryExpression,
-        `Failed to emit operatorToken ${nodeKindString(binaryExpression.operatorToken)} for ${nodeKindString(
-          binaryExpression,
-        )} in ${emitBinaryExpression.name}.`,
+        `Failed to emit ${nodeKindString(binaryExpression.operatorToken)} for ${nodeKindString(binaryExpression)} in ${
+          emitBinaryExpression.name
+        }.`,
       );
   }
 
@@ -646,6 +680,13 @@ function emitPrefixUnaryExpression(context: EmitContext, prefixUnaryExpression: 
     case ts.SyntaxKind.PlusPlusToken:
       context.output.append("++");
       break;
+
+    default:
+      throw new EmitError(
+        context,
+        prefixUnaryExpression,
+        `Failed to emit ${ts.SyntaxKind[prefixUnaryExpression.operator]} in ${emitPrefixUnaryExpression.name}.`,
+      );
   }
 
   emitExpression(context, prefixUnaryExpression.operand);
@@ -662,6 +703,13 @@ function emitPostfixUnaryExpression(context: EmitContext, postfixUnaryExpression
     case ts.SyntaxKind.PlusPlusToken:
       context.output.append("++");
       break;
+
+    default:
+      throw new EmitError(
+        context,
+        postfixUnaryExpression,
+        `Failed to emit ${ts.SyntaxKind[postfixUnaryExpression.operator]} in ${emitPostfixUnaryExpression.name}.`,
+      );
   }
 }
 
@@ -675,7 +723,13 @@ function emitPropertyAccessExpression(
 
   // NOTE: Properties are not supported in C++ so we have to call
   // a method.
-  if (!context.isEmittingCallExpressionExpression) {
+  if (
+    !context.isEmittingCallExpressionExpression &&
+    shouldEmitParenthesisForPropertyAccessExpression(
+      context,
+      getTypeAsStringFromNode(context, propertyAccessExpression.expression),
+    )
+  ) {
     context.output.append("()");
   }
 }
@@ -690,6 +744,44 @@ function emitIdentifier(context: EmitContext, identifier: ts.Identifier | ts.Pri
 
 function emitNumericLiteral(context: EmitContext, numcericLiteral: ts.NumericLiteral): void {
   context.output.append(numcericLiteral.text);
+}
+
+function emitObjectLiteralExpression(context: EmitContext, objectLiteralExpression: ts.ObjectLiteralExpression): void {
+  const type = getTypeFromNode(context, objectLiteralExpression);
+
+  context.output.append("{");
+
+  for (let i = 0; i < objectLiteralExpression.properties.length; i++) {
+    const property = objectLiteralExpression.properties[i];
+
+    if (i != 0) {
+      context.output.append(", ");
+    } else {
+      context.output.append(" ");
+    }
+
+    context.output.append(".");
+    emitIdentifier(context, property.name as ts.Identifier);
+    context.output.append(" = ");
+
+    if (property.kind === ts.SyntaxKind.PropertyAssignment) {
+      emitExpression(context, property.initializer);
+    } else if (property.kind === ts.SyntaxKind.ShorthandPropertyAssignment) {
+      emitIdentifier(context, property.name as ts.Identifier);
+    } else {
+      throw new EmitError(
+        context,
+        property,
+        `Failed to emit ${nodeKindString(property)} in ${emitObjectLiteralExpression.name}.`,
+      );
+    }
+
+    if (i === objectLiteralExpression.properties.length - 1) {
+      context.output.append(" ");
+    }
+  }
+
+  context.output.append("}");
 }
 
 function emitParenthesizedExpression(context: EmitContext, parenthesizedExpression: ts.ParenthesizedExpression): void {
@@ -733,5 +825,5 @@ function emitTemplateExpression(context: EmitContext, templateExpression: ts.Tem
 }
 
 function emitType(context: EmitContext, type: ts.TypeNode): void {
-  context.output.append(getTypeFromNode(context, type));
+  context.output.append(getTypeAsStringFromNode(context, type));
 }

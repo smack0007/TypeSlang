@@ -39,6 +39,14 @@ export class StringBuilder {
     this.data.push("");
   }
 
+  public removeLine(): void {
+    if (this.currentLine.length > 0) {
+      this.currentLine = "";
+    } else {
+      this.data.pop();
+    }
+  }
+
   public insertPlaceholder(): StringBuilder {
     const placeholder = new StringBuilder();
     this.data.push(placeholder, "");
@@ -46,6 +54,16 @@ export class StringBuilder {
   }
 
   public toString(): string {
-    return this.data.join(EOL);
+    let result = this.data
+      .map((x) => x.toString())
+      // Strip out extra EOL(s)
+      .map((x) => (x.endsWith(EOL) ? x.slice(0, -EOL.length) : x))
+      .join(EOL);
+
+    if (this.currentLine.length > 0) {
+      result += this.currentLine;
+    }
+
+    return result;
   }
 }

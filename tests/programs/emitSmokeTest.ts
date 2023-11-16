@@ -1,17 +1,22 @@
 // This program should invoke each function in emit.ts at least once.
 
+type IsNotUsed = {
+  task: string;
+};
+
 function sayHello(name: string, age: number): void {
   console.info(`Hello ${name}, you are ${age} years old!`);
 }
 
 function main(): i32 {
-  sayHello("Joe", 42);
-  sayHello("Bob", 42 / 2);
+  //sayHello("Joe", 42);
+  //sayHello("Bob", 42 / 2);
 
   // arrays();
   // booleans();
   // doWhile();
-  floats();
+  // floats();
+  structs();
 
   return 0;
 }
@@ -65,4 +70,29 @@ function floats(): void {
   const value4: f32 = (12 as f32) + (0.34 as f32);
   const value5: f64 = value + value2 + value3 + value4;
   console.info(value, value2, value3, value4, value5);
+}
+
+interface Point {
+  x: f64;
+  y: f64;
+}
+
+type Person = {
+  name: string;
+  age: i32;
+};
+
+function structs(): void {
+  const p1: Point = { x: 1.2, y: 3.4 };
+  console.info(`(${p1.x}, ${p1.y})`);
+
+  greetPerson(createPerson("Bob Freeman", 42));
+}
+
+function createPerson(name: string, age: number): Person {
+  return { name, age };
+}
+
+function greetPerson(person: Person): void {
+  console.info(`Hello ${person.name} you are ${person.age} years old.`);
 }
