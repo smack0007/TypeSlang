@@ -1,88 +1,10 @@
 import ts from "typescript";
-import { StringBuilder } from "../../stringBuilder.js";
-import { hasFlag, isFirstCharacterDigit as isFirstCharacterDigit } from "../../utils.js";
-import { Stack } from "../../stack.js";
-import { transformInterfaceDeclarationToTypeAliasDeclaration } from "../../tsUtils.js";
-
-class VariableData {
-  public isInitialized: boolean = false;
-
-  constructor(public type: string) {}
-}
-
-class VariableScope {
-  private _data: Map<string, VariableData> = new Map<string, VariableData>();
-
-  public declare(name: ts.Identifier, type: string): void {
-    if (this._data.has(name.escapedText as string)) {
-      throw new Error(`Variable ${name} is already declared.`);
-    }
-    this._data.set(name.escapedText as string, new VariableData(type));
-  }
-
-  public set(name: ts.Identifier): void {
-    if (!this._data.has(name.escapedText as string)) {
-      throw new Error(`Variable is not declared.`);
-    }
-    this._data.get(name.escapedText as string)!.isInitialized = true;
-  }
-}
-
-class EmitContext {
-  private _outputStack = new Stack<StringBuilder>([new StringBuilder()]);
-  private _scopeStack = new Stack<VariableScope>([new VariableScope()]);
-
-  public readonly types: ts.TypeAliasDeclaration[] = [];
-  public readonly functions: ts.FunctionDeclaration[] = [];
-
-  public isEmittingCallExpressionExpression = false;
-
-  constructor(public readonly typeChecker: ts.TypeChecker, public readonly sourceFile: ts.SourceFile) {}
-
-  public get output(): StringBuilder {
-    return this._outputStack.top;
-  }
-
-  public pushOutput(output: StringBuilder): void {
-    this._outputStack.push(output);
-  }
-
-  public popOutput(): void {
-    this._outputStack.pop();
-  }
-
-  public pushScope(): void {
-    this._scopeStack.push(new VariableScope());
-  }
-
-  public popScope(): void {
-    this._scopeStack.pop();
-  }
-
-  public get scope(): VariableScope {
-    return this._scopeStack.top;
-  }
-}
-
-export interface EmitResult {
-  readonly output: string;
-}
-
-export class EmitError extends Error {
-  constructor(context: EmitContext, public readonly node: ts.Node, message: string) {
-    const { line, character } = context.sourceFile.getLineAndCharacterOfPosition(node.getStart(context.sourceFile));
-
-    super(`(${line + 1}, ${character}): ${message}`);
-  }
-}
-
-function kindString(kind: ts.SyntaxKind): string {
-  return ts.SyntaxKind[kind];
-}
-
-function nodeKindString(node: ts.Node): string {
-  return kindString(node.kind);
-}
+import { hasFlag, isFirstCharacterDigit } from "../../utils.js";
+import { kindString, nodeKindString, transformInterfaceDeclarationToTypeAliasDeclaration } from "../../tsUtils.js";
+import { EmitContext } from "../emitContext.js";
+import { EmitError } from "../emitError.js";
+import type { EmitResult } from "../emitResult.js";
+import { withIsUsed } from "../../markers.js";
 
 function mapType(context: EmitContext, node: ts.Node, type: ts.Type, initializer: ts.Expression | undefined): string {
   let typeName = context.typeChecker.typeToString(type);
@@ -183,7 +105,7 @@ export async function emit(typeChecker: ts.TypeChecker, sourceFile: ts.SourceFil
   }
 
   context.pushOutput(forwardDeclaraedStructs);
-  for (const type of context.types.filter((x) => x.type.kind === ts.SyntaxKind.TypeLiteral)) {
+  for (const type of context.types.filter((x) => x.isUsed && x.type.kind === ts.SyntaxKind.TypeLiteral)) {
     emitTypeAliasDeclaration(context, type, { mode: EmitTypeAliasDeclarationMode.Struct });
   }
   context.popOutput();
@@ -297,7 +219,7 @@ function emitImportDeclaration(context: EmitContext, importDeclaration: ts.Impor
 }
 
 function emitInterfaceDeclaration(context: EmitContext, interfaceDeclaration: ts.InterfaceDeclaration): void {
-  context.types.push(transformInterfaceDeclarationToTypeAliasDeclaration(interfaceDeclaration));
+  context.types.push(withIsUsed(transformInterfaceDeclarationToTypeAliasDeclaration(interfaceDeclaration)));
 }
 
 enum EmitTypeAliasDeclarationMode {
@@ -317,7 +239,7 @@ function emitTypeAliasDeclaration(
   options.mode ??= EmitTypeAliasDeclarationMode.None;
 
   if (options.mode === EmitTypeAliasDeclarationMode.None) {
-    context.types.push(typeAliasDeclaration);
+    context.types.push(withIsUsed(typeAliasDeclaration));
   } else if (options.mode === EmitTypeAliasDeclarationMode.Struct) {
     if (typeAliasDeclaration.type.kind !== ts.SyntaxKind.TypeLiteral) {
       throw new EmitError(

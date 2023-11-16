@@ -2,9 +2,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import ts from "typescript";
-import { emit, EmitError, type EmitResult } from "./backends/cpp/emit.js";
+import { emit } from "./backends/cpp/emit.js";
 import { ensureDirectoryExists } from "./fs.js";
 import { ROOT_PATH } from "./constants.js";
+import type { EmitResult } from "./backends/emitResult.js";
+import { EmitError } from "./backends/emitError.js";
 
 async function main(args: string[]): Promise<i32> {
   // TODO: Check these

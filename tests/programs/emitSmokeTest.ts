@@ -1,5 +1,9 @@
 // This program should invoke each function in emit.ts at least once.
 
+type IsNotUsed = {
+  task: string;
+};
+
 function sayHello(name: string, age: number): void {
   console.info(`Hello ${name}, you are ${age} years old!`);
 }
