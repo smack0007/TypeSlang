@@ -183,16 +183,18 @@ export async function emit(typeChecker: ts.TypeChecker, sourceFile: ts.SourceFil
   }
 
   context.pushOutput(forwardDeclaraedStructs);
-  for (const type of context.types.filter(x => x.type.kind === ts.SyntaxKind.TypeLiteral)) {
+  for (const type of context.types.filter((x) => x.type.kind === ts.SyntaxKind.TypeLiteral)) {
     emitTypeAliasDeclaration(context, type, { mode: EmitTypeAliasDeclarationMode.Struct });
   }
   context.popOutput();
+  forwardDeclaraedStructs.removeLine();
 
   context.pushOutput(fowardDeclaredFunctions);
   for (const func of context.functions) {
     emitFunctionDeclaration(context, func, { signatureOnly: true });
   }
   context.popOutput();
+  fowardDeclaredFunctions.appendLine();
 
   return {
     output: context.output.toString(),
@@ -318,9 +320,15 @@ function emitTypeAliasDeclaration(
     context.types.push(typeAliasDeclaration);
   } else if (options.mode === EmitTypeAliasDeclarationMode.Struct) {
     if (typeAliasDeclaration.type.kind !== ts.SyntaxKind.TypeLiteral) {
-      throw new EmitError(context, typeAliasDeclaration, `${nodeKindString(typeAliasDeclaration)} cannot be emitted as a struct because 'type' is not a ${kindString(ts.SyntaxKind.TypeLiteral)} in ${emitImportDeclaration.name}.`);
+      throw new EmitError(
+        context,
+        typeAliasDeclaration,
+        `${nodeKindString(typeAliasDeclaration)} cannot be emitted as a struct because 'type' is not a ${kindString(
+          ts.SyntaxKind.TypeLiteral,
+        )} in ${emitImportDeclaration.name}.`,
+      );
     }
-    
+
     context.output.appendLine(`struct ${typeAliasDeclaration.name.escapedText} {`);
     context.output.indent();
 
@@ -333,6 +341,7 @@ function emitTypeAliasDeclaration(
 
     context.output.unindent();
     context.output.appendLine("};");
+    context.output.appendLine();
   }
 }
 
