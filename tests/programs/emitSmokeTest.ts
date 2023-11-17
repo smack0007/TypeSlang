@@ -3,6 +3,11 @@
 const USER_NAME = "smack0007";
 const MAGIC_NUMBER = 42;
 
+const USER_MAP = {
+  admin: USER_NAME,
+  developer: "Zachary Snow",
+};
+
 type IsNotUsed = {
   task: string;
 };
@@ -12,7 +17,7 @@ function sayHello(name: string, age: number): void {
 }
 
 function main(): i32 {
-  sayHello(USER_NAME, MAGIC_NUMBER);
+  // sayHello(USER_NAME, MAGIC_NUMBER);
   // sayHello("Bob", 42 / 2);
 
   // arrays();
@@ -20,7 +25,7 @@ function main(): i32 {
   // whileLoop();
   // doWhile();
   // floats();
-  // structs();
+  structs();
 
   return 0;
 }
