@@ -6,7 +6,7 @@ const MAGIC_NUMBER = 42;
 const USER_MAP = {
   admin: USER_NAME,
   developer: "Zachary Snow",
-};
+} as const;
 
 type IsNotUsed = {
   task: string;

@@ -11,9 +11,7 @@ import { EmitError } from "../emitError.js";
 import type { EmitResult } from "../emitResult.js";
 import { withIsUsed } from "../../markers.js";
 
-function mapType(context: EmitContext, node: ts.Node, type: ts.Type, initializer: ts.Expression | undefined): string {
-  let typeName = context.typeChecker.typeToString(type);
-
+function mapTypeName(context: EmitContext, node: ts.Node, typeName: string): string {
   if (typeName.startsWith('"') && typeName.endsWith('"')) {
     typeName = "string";
   }
@@ -72,12 +70,14 @@ function getTypeAsStringFromNode(context: EmitContext, node: ts.Node, initialize
   let result: string | undefined = undefined;
 
   if (hasTypeProperty(node)) {
-    result = node.type.getText();
+    const typeName = node.type.getText();
+    result = mapTypeName(context, node, typeName);
   }
 
   if (result === undefined) {
-    const type = getTypeFromNode(context, node);
-    result = mapType(context, node, type, initializer);
+    const type = getTypeFromNode(context, node, initializer);
+    const typeName = context.typeChecker.typeToString(type);
+    result = mapTypeName(context, node, typeName);
   }
 
   return result;
@@ -85,7 +85,9 @@ function getTypeAsStringFromNode(context: EmitContext, node: ts.Node, initialize
 
 function getFunctionReturnType(context: EmitContext, functionDeclaration: ts.FunctionDeclaration): string {
   const signature = context.typeChecker.getSignatureFromDeclaration(functionDeclaration);
-  return mapType(context, functionDeclaration, signature!.getReturnType(), undefined);
+  const type = signature!.getReturnType();
+  const typeName = context.typeChecker.typeToString(type);
+  return mapTypeName(context, functionDeclaration, typeName);
 }
 
 function getFunctionParameterType(
@@ -93,8 +95,9 @@ function getFunctionParameterType(
   parameter: ts.ParameterDeclaration,
   initializer?: ts.Expression,
 ): string {
-  const type = context.typeChecker.getTypeAtLocation(parameter);
-  return mapType(context, parameter, type, initializer);
+  const type = getTypeFromNode(context, parameter, initializer);
+  const typeName = context.typeChecker.typeToString(type);
+  return mapTypeName(context, parameter, typeName);
 }
 
 function shouldEmitParenthesisForPropertyAccessExpression(context: EmitContext, propertySourceType: string): boolean {
@@ -568,6 +571,12 @@ function emitArrayLiteralExpression(context: EmitContext, arrayLiteralExpression
 }
 
 function emitAsExpression(context: EmitContext, asExpression: ts.AsExpression): void {
+  // Ignore as const expressions
+  if (ts.isConstTypeReference(asExpression.type)) {
+    emitExpression(context, asExpression.expression);
+    return;
+  }
+
   const type = getTypeAsStringFromNode(context, asExpression);
 
   if (asExpression.expression.kind === ts.SyntaxKind.NumericLiteral && (type === "f32" || type === "f64")) {
