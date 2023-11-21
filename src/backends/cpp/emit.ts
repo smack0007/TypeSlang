@@ -1,14 +1,17 @@
 import ts from "typescript";
 import { hasFlag, isFirstCharacterDigit } from "../../utils.js";
-import { kindString, nodeKindString, transformInterfaceDeclarationToTypeAliasDeclaration } from "../../tsUtils.js";
+import {
+  createTypeAliasDeclarationFromString,
+  kindString,
+  nodeKindString,
+  transformInterfaceDeclarationToTypeAliasDeclaration,
+} from "../../tsUtils.js";
 import { EmitContext } from "../emitContext.js";
 import { EmitError } from "../emitError.js";
 import type { EmitResult } from "../emitResult.js";
 import { withIsUsed } from "../../markers.js";
 
-function mapType(context: EmitContext, node: ts.Node, type: ts.Type, initializer: ts.Expression | undefined): string {
-  let typeName = context.typeChecker.typeToString(type);
-
+function mapTypeName(context: EmitContext, node: ts.Node, typeName: string): string {
   if (typeName.startsWith('"') && typeName.endsWith('"')) {
     typeName = "string";
   }
@@ -25,9 +28,21 @@ function mapType(context: EmitContext, node: ts.Node, type: ts.Type, initializer
     }
   }
 
+  // TODO: This probably doesn't work for arrays of arrays
   if (typeName.endsWith("[]")) {
     typeName = typeName.substring(0, typeName.length - 2);
     typeName = `Array<${typeName}>`;
+  }
+
+  if (typeName.startsWith("{")) {
+    let knownType = context.types.find((x) => x.type.getText() === typeName);
+
+    if (knownType === undefined) {
+      knownType = withIsUsed(createTypeAliasDeclarationFromString("_struct", typeName));
+      context.types.push(knownType);
+    }
+
+    return knownType.name.getText();
   }
 
   switch (typeName) {
@@ -55,12 +70,14 @@ function getTypeAsStringFromNode(context: EmitContext, node: ts.Node, initialize
   let result: string | undefined = undefined;
 
   if (hasTypeProperty(node)) {
-    result = node.type.getText();
+    const typeName = node.type.getText();
+    result = mapTypeName(context, node, typeName);
   }
 
   if (result === undefined) {
-    const type = getTypeFromNode(context, node);
-    result = mapType(context, node, type, initializer);
+    const type = getTypeFromNode(context, node, initializer);
+    const typeName = context.typeChecker.typeToString(type);
+    result = mapTypeName(context, node, typeName);
   }
 
   return result;
@@ -68,7 +85,9 @@ function getTypeAsStringFromNode(context: EmitContext, node: ts.Node, initialize
 
 function getFunctionReturnType(context: EmitContext, functionDeclaration: ts.FunctionDeclaration): string {
   const signature = context.typeChecker.getSignatureFromDeclaration(functionDeclaration);
-  return mapType(context, functionDeclaration, signature!.getReturnType(), undefined);
+  const type = signature!.getReturnType();
+  const typeName = context.typeChecker.typeToString(type);
+  return mapTypeName(context, functionDeclaration, typeName);
 }
 
 function getFunctionParameterType(
@@ -76,8 +95,9 @@ function getFunctionParameterType(
   parameter: ts.ParameterDeclaration,
   initializer?: ts.Expression,
 ): string {
-  const type = context.typeChecker.getTypeAtLocation(parameter);
-  return mapType(context, parameter, type, initializer);
+  const type = getTypeFromNode(context, parameter, initializer);
+  const typeName = context.typeChecker.typeToString(type);
+  return mapTypeName(context, parameter, typeName);
 }
 
 function shouldEmitParenthesisForPropertyAccessExpression(context: EmitContext, propertySourceType: string): boolean {
@@ -147,7 +167,7 @@ function emitTopLevelStatement(context: EmitContext, statement: ts.Statement): v
       break;
 
     case ts.SyntaxKind.VariableStatement:
-      emitVariableStatement(context, statement as ts.VariableStatement);
+      emitVariableStatement(context, statement as ts.VariableStatement, { isGlobal: true });
       break;
 
     default:
@@ -160,13 +180,13 @@ function emitTopLevelStatement(context: EmitContext, statement: ts.Statement): v
 }
 
 interface EmitFunctionDeclarationOptions {
-  signatureOnly?: boolean;
+  signatureOnly: boolean;
 }
 
 function emitFunctionDeclaration(
   context: EmitContext,
   functionDeclaration: ts.FunctionDeclaration,
-  options: EmitFunctionDeclarationOptions = {},
+  options: Partial<EmitFunctionDeclarationOptions> = {},
 ): void {
   const returnType = getFunctionReturnType(context, functionDeclaration);
 
@@ -237,19 +257,19 @@ enum EmitTypeAliasDeclarationMode {
 }
 
 interface EmitTypeAliasDeclarationOptions {
-  mode?: EmitTypeAliasDeclarationMode;
+  mode: EmitTypeAliasDeclarationMode;
 }
 
 function emitTypeAliasDeclaration(
   context: EmitContext,
   typeAliasDeclaration: ts.TypeAliasDeclaration,
-  options: EmitTypeAliasDeclarationOptions = {},
+  options: Partial<EmitTypeAliasDeclarationOptions> = {},
 ): void {
-  options.mode ??= EmitTypeAliasDeclarationMode.None;
+  const { mode = EmitTypeAliasDeclarationMode.None } = options;
 
-  if (options.mode === EmitTypeAliasDeclarationMode.None) {
+  if (mode === EmitTypeAliasDeclarationMode.None) {
     context.types.push(withIsUsed(typeAliasDeclaration));
-  } else if (options.mode === EmitTypeAliasDeclarationMode.Struct) {
+  } else if (mode === EmitTypeAliasDeclarationMode.Struct) {
     if (typeAliasDeclaration.type.kind !== ts.SyntaxKind.TypeLiteral) {
       throw new EmitError(
         context,
@@ -404,10 +424,21 @@ function emitReturnStatement(context: EmitContext, returnStatement: ts.ReturnSta
   }
 }
 
-function emitVariableStatement(context: EmitContext, variableStatement: ts.VariableStatement): void {
+interface EmitVaraibleStatementOptions {
+  isGlobal?: boolean;
+}
+
+function emitVariableStatement(
+  context: EmitContext,
+  variableStatement: ts.VariableStatement,
+  options: Partial<EmitVaraibleStatementOptions> = {},
+): void {
+  const { isGlobal = false } = options;
+
   const isConst = hasFlag(variableStatement.declarationList.flags, ts.NodeFlags.Const);
 
   emitVariableDeclarationList(context, variableStatement.declarationList, {
+    isGlobal,
     isConst,
   });
 
@@ -415,15 +446,16 @@ function emitVariableStatement(context: EmitContext, variableStatement: ts.Varia
 }
 
 interface EmitVariableDeclarationListOptions {
-  isConst?: boolean;
+  isGlobal: boolean;
+  isConst: boolean;
 }
 
 function emitVariableDeclarationList(
   context: EmitContext,
   variableDeclarationList: ts.VariableDeclarationList,
-  options: EmitVariableDeclarationListOptions = {},
+  options: Partial<EmitVariableDeclarationListOptions> = {},
 ): void {
-  const { isConst } = options;
+  const { isGlobal = false, isConst = false } = options;
 
   for (const variableDeclaration of variableDeclarationList.declarations) {
     const type = getTypeAsStringFromNode(context, variableDeclaration, variableDeclaration.initializer);
@@ -539,6 +571,12 @@ function emitArrayLiteralExpression(context: EmitContext, arrayLiteralExpression
 }
 
 function emitAsExpression(context: EmitContext, asExpression: ts.AsExpression): void {
+  // Ignore as const expressions
+  if (ts.isConstTypeReference(asExpression.type)) {
+    emitExpression(context, asExpression.expression);
+    return;
+  }
+
   const type = getTypeAsStringFromNode(context, asExpression);
 
   if (asExpression.expression.kind === ts.SyntaxKind.NumericLiteral && (type === "f32" || type === "f64")) {

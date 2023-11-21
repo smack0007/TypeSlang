@@ -3,8 +3,6 @@ export type IsUsed<T extends {}> = T & {
 };
 
 export function withIsUsed<T extends {}>(obj: T, isUsed = false): IsUsed<T> {
-  return {
-    ...obj,
-    isUsed,
-  };
+  (obj as unknown as IsUsed<T>).isUsed = isUsed;
+  return obj as unknown as IsUsed<T>;
 }
