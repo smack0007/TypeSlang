@@ -1,3 +1,4 @@
+- pointers
 - classes
 - try / catch / throw / finally
 - as const
