@@ -12,6 +12,7 @@ export class EmitContext {
   public readonly functions: ts.FunctionDeclaration[] = [];
 
   public isEmittingCallExpressionExpression = false;
+  public emittingVariableDeclarationType: string | null = null;
 
   constructor(public readonly typeChecker: ts.TypeChecker, public readonly sourceFile: ts.SourceFile) {}
 

@@ -25,7 +25,8 @@ function main(): i32 {
   // whileLoop();
   // doWhile();
   // floats();
-  structs();
+  // structs();
+  pointers();
 
   return 0;
 }
@@ -116,4 +117,11 @@ function createPerson(name: string, age: number): Person {
 
 function greetPerson(person: Person): void {
   console.info(`Hello ${person.name} you are ${person.age} years old.`);
+}
+
+function pointers(): void {
+  const data: u8[] = [1, 2, 3, 4];
+  const dataPtr: ptr<u8> = Pointer(data);
+  console.info(dataPtr.addressOf);
+  console.info(dataPtr[0], dataPtr[1], dataPtr[2], dataPtr[3]);
 }
