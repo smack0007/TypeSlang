@@ -20,12 +20,8 @@ function mapTypeName(context: EmitContext, node: ts.Node, typeName: string): str
     typeName = typeName.replaceAll("number[]", "i32[]");
   }
 
-  while (typeName.includes("ptr<") && typeName.endsWith(">")) {
-    typeName = typeName.replace("ptr<", "").slice(0, -1) + "*";
-  }
-
-  while (typeName.includes("Pointer<") && typeName.endsWith(">")) {
-    typeName = typeName.replace("Pointer<", "").slice(0, -1) + "*";
+  while (typeName.includes("ptr<")) {
+    typeName = typeName.replaceAll("ptr<", "Pointer<");
   }
 
   if (isFirstCharacterDigit(typeName)) {
@@ -113,7 +109,7 @@ function getFunctionParameterTypeAsString(
 }
 
 function isPointerType(context: EmitContext, type: string): boolean {
-  return type.endsWith("*");
+  return type.includes("Pointer<") && type.endsWith(">");
 }
 
 function shouldEmitParenthesisForPropertyAccessExpression(context: EmitContext, propertySourceType: string): boolean {

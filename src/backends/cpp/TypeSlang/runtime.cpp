@@ -16,8 +16,7 @@ typedef uint64_t u64;
 
 #include "array.cpp"
 #include "console.cpp"
+#include "pointers.cpp"
 #include "string.cpp"
-
-typedef JS::String string;
 
 JS::Console console;
