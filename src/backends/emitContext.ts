@@ -3,6 +3,8 @@ import { Stack } from "../stack.js";
 import { StringBuilder } from "../stringBuilder.js";
 import { VariableScope } from "./variableScope.js";
 import type { IsUsed } from "../markers.js";
+import { hasTypeProperty, mapTypeName } from "./typeUtils.js";
+import { isAddressOfExpression } from "./customNodes.js";
 
 export class EmitContext {
   private _outputStack = new Stack<StringBuilder>([new StringBuilder()]);
@@ -14,7 +16,7 @@ export class EmitContext {
   public isEmittingCallExpressionExpression = false;
   public emittingVariableDeclarationType: string | null = null;
 
-  constructor(public readonly typeChecker: ts.TypeChecker, public readonly sourceFile: ts.SourceFile) {}
+  constructor(private readonly _typeChecker: ts.TypeChecker, public readonly sourceFile: ts.SourceFile) {}
 
   public get output(): StringBuilder {
     return this._outputStack.top;
@@ -36,7 +38,54 @@ export class EmitContext {
     this._scopeStack.pop();
   }
 
-  public get scope(): VariableScope {
+  private get scope(): VariableScope {
     return this._scopeStack.top;
+  }
+
+  public declare(name: ts.Identifier, type: string): void {
+    this.scope.declare(name, type);
+  }
+
+  public set(name: ts.Identifier): void {
+    this.scope.set(name);
+  }
+
+  public getType(
+    node: ts.Node,
+    options: {
+      initializer?: ts.Expression;
+    } = {},
+  ): string {
+    let result: string | undefined = undefined;
+
+    if (hasTypeProperty(node)) {
+      const typeName = node.type.getText();
+      result = mapTypeName(this.types, node, typeName);
+    }
+
+    if (ts.isFunctionDeclaration(node)) {
+      const signature = this._typeChecker.getSignatureFromDeclaration(node);
+      const type = signature!.getReturnType();
+      const typeName = this._typeChecker.typeToString(type);
+      result = mapTypeName(this.types, node, typeName);
+    }
+
+    if (result === undefined && options.initializer && isAddressOfExpression(options.initializer)) {
+      result = this.getType(options.initializer.arguments[0]);
+
+      if (result.startsWith("Array<") && result.endsWith(">")) {
+        result = result.replace("Array<", "Pointer<");
+      } else {
+        result = `Pointer<${result}>`;
+      }
+    }
+
+    if (result === undefined) {
+      const type = this._typeChecker.getTypeAtLocation(node);
+      const typeName = this._typeChecker.typeToString(type);
+      result = mapTypeName(this.types, node, typeName);
+    }
+
+    return result;
   }
 }
