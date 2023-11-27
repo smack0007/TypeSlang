@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { isError } from "./utils.js";
+import { isError } from "./utils.ts";
 
 export async function ensureDirectoryExists(directory: string): Promise<void> {
   try {

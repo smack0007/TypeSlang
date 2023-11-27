@@ -1,10 +1,10 @@
 import ts from "typescript";
-import { Stack } from "../stack.js";
-import { StringBuilder } from "../stringBuilder.js";
-import { VariableScope } from "./variableScope.js";
-import type { IsUsed } from "../markers.js";
-import { hasTypeProperty, mapTypeName } from "./typeUtils.js";
-import { isAddressOfExpression } from "./customNodes.js";
+import { Stack } from "../stack.ts";
+import { StringBuilder } from "../stringBuilder.ts";
+import { VariableScope } from "./variableScope.ts";
+import type { IsUsed } from "../markers.ts";
+import { hasTypeProperty, mapTypeName } from "./typeUtils.ts";
+import { isAddressOfExpression } from "./customNodes.ts";
 
 export class EmitContext {
   private _outputStack = new Stack<StringBuilder>([new StringBuilder()]);

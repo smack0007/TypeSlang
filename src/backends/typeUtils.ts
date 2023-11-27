@@ -1,8 +1,8 @@
 import * as ts from "typescript";
-import { withIsUsed, type IsUsed } from "../markers.js";
-import { createTypeAliasDeclarationFromString } from "../tsUtils.js";
-import { isFirstCharacterDigit } from "../utils.js";
-import { EmitError } from "./emitError.js";
+import { withIsUsed, type IsUsed } from "../markers.ts";
+import { createTypeAliasDeclarationFromString } from "../tsUtils.ts";
+import { isFirstCharacterDigit } from "../utils.ts";
+import { EmitError } from "./emitError.ts";
 
 export function hasTypeProperty(node: ts.Node): node is ts.Node & { type: ts.TypeNode } {
   return !!(node as unknown as { type: ts.Type }).type;

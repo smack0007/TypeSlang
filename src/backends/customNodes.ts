@@ -1,5 +1,4 @@
-import * as ts from "typescript";
-import type { EmitContext } from "./emitContext.js";
+import ts from "typescript";
 
 export type AddressOfExpression = ts.CallExpression & {
   expression: ts.Identifier;

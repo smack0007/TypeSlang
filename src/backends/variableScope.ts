@@ -1,5 +1,5 @@
 import ts from "typescript";
-import type { IsUsed } from "../markers.js";
+import type { IsUsed } from "../markers.ts";
 
 class VariableData {
   public isInitialized: boolean = false;

@@ -1,4 +1,6 @@
 {
+  "deno.enable": true,
+
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "[cpp]": {
     "editor.defaultFormatter": "ms-vscode.cpptools"
@@ -8,5 +10,14 @@
   },
   "files.associations": {
     "string": "cpp"
+  },
+  "files.exclude": {
+    "**/.git": true,
+    "**/.svn": true,
+    "**/.hg": true,
+    "**/CVS": true,
+    "**/.DS_Store": true,
+    "**/Thumbs.db": true,
+    "node_modules": true
   }
 }

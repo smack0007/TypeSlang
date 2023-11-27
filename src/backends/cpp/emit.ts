@@ -1,16 +1,16 @@
 import ts, { type Expression } from "typescript";
-import { hasFlag, isFirstCharacterDigit } from "../../utils.js";
+import { hasFlag, isFirstCharacterDigit } from "../../utils.ts";
 import {
   createTypeAliasDeclarationFromString,
   kindString,
   nodeKindString,
   transformInterfaceDeclarationToTypeAliasDeclaration,
-} from "../../tsUtils.js";
-import { EmitContext } from "../emitContext.js";
-import { EmitError } from "../emitError.js";
-import type { EmitResult } from "../emitResult.js";
-import { withIsUsed } from "../../markers.js";
-import { isAddressOfExpression } from "../customNodes.js";
+} from "../../tsUtils.ts";
+import { EmitContext } from "../emitContext.ts";
+import { EmitError } from "../emitError.ts";
+import type { EmitResult } from "../emitResult.ts";
+import { withIsUsed } from "../../markers.ts";
+import { isAddressOfExpression } from "../customNodes.ts";
 
 function isPointerType(context: EmitContext, type: string): boolean {
   return type.includes("Pointer<") && type.endsWith(">");

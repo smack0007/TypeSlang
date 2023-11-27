@@ -1,6 +1,6 @@
 import ts from "typescript";
-import { SCRIPT_TARGET } from "./constants.js";
-import { createEnumToStringMapFunction } from "./utils.js";
+import { SCRIPT_TARGET } from "./constants.ts";
+import { createEnumToStringMapFunction } from "./utils.ts";
 
 let typeCounter = 0;
 
