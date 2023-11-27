@@ -8,7 +8,7 @@ export function hasTypeProperty(node: ts.Node): node is ts.Node & { type: ts.Typ
   return !!(node as unknown as { type: ts.Type }).type;
 }
 
-export function mapTypeName(types: IsUsed<ts.TypeAliasDeclaration>[], node: ts.Node, typeName: string): string {
+export function mapTypeName(types: IsUsed<ts.TypeAliasDeclaration>[], typeName: string): string {
   if (typeName.startsWith('"') && typeName.endsWith('"')) {
     typeName = "string";
   }

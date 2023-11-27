@@ -42,8 +42,8 @@ function createEmitContext(sourceText: string): EmitContext {
 }
 
 test("should work", () => {
-  const context = createEmitContext("const foo: number = 42;");
+  const context = createEmitContext("const foo = 42;");
   const statement = context.sourceFile.statements.at(0) as ts.VariableStatement;
-  //context.declare(identifier, "number");
-  assert.strictEqual(context.getType(statement.declarationList.declarations.at(0)!), "i32");
+  context.declare("foo", "i32");
+  assert.strictEqual(context.getType("foo"), "i32");
 });

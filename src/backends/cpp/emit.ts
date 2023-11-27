@@ -136,13 +136,13 @@ function emitFunctionDeclaration(
     context.output.append(" ");
 
     context.functions.push(functionDeclaration);
-    context.declare(functionDeclaration.name, "function");
-    context.set(functionDeclaration.name);
+    context.declare(functionDeclaration.name.getText(), "function");
+    context.set(functionDeclaration.name.getText());
 
     context.pushScope();
     for (const parameter of functionDeclaration.parameters) {
       const parameterType = context.getType(parameter);
-      context.declare(parameter.name as ts.Identifier, parameterType);
+      context.declare(parameter.name.getText(), parameterType);
     }
 
     emitBlock(context, functionDeclaration.body);
@@ -381,13 +381,13 @@ function emitVariableDeclarationList(
     context.output.append(" ");
     emitIdentifier(context, variableDeclaration.name as ts.Identifier);
 
-    context.declare(variableDeclaration.name as ts.Identifier, type);
+    context.declare(variableDeclaration.name.getText(), type);
 
     if (variableDeclaration.initializer) {
       context.output.append(" = ");
       emitExpression(context, variableDeclaration.initializer);
 
-      context.set(variableDeclaration.name as ts.Identifier);
+      context.set(variableDeclaration.name.getText());
     }
 
     context.emittingVariableDeclarationType = null;

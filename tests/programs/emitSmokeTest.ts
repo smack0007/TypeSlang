@@ -121,7 +121,7 @@ function greetPerson(person: Person): void {
 
 function pointers(): void {
   const data: u8[] = [1, 2, 3, 4];
-  const dataPtr: ptr<u8> = Pointer(data);
+  const dataPtr = Pointer(data);
   console.info(dataPtr.addressOf);
   console.info(dataPtr[0], dataPtr[1], dataPtr[2], dataPtr[3]);
 }

@@ -2,7 +2,7 @@ import ts from "typescript";
 import type { IsUsed } from "../markers.ts";
 
 class VariableData {
-  public isInitialized: boolean = false;
+  public isInitialized = false;
 
   constructor(public type: string) {}
 }
@@ -14,13 +14,13 @@ type VariableScopeEmitContext = {
 export class VariableScope {
   private _data: Map<string, VariableData> = new Map<string, VariableData>();
 
-  constructor(private _context: VariableScopeEmitContext) {}
+  constructor(private _context: VariableScopeEmitContext, private _parent?: VariableScope) {}
 
-  public declare(name: ts.Identifier, type: string): void {
-    if (this._data.has(name.escapedText as string)) {
+  public declare(name: string, type: string): void {
+    if (this._data.has(name)) {
       throw new Error(`Variable ${name} is already declared.`);
     }
-    this._data.set(name.escapedText as string, new VariableData(type));
+    this._data.set(name, new VariableData(type));
 
     const typeAliasDeclaration = this._context.types.find((x) => x.name.getText() === type);
     if (typeAliasDeclaration) {
@@ -28,10 +28,14 @@ export class VariableScope {
     }
   }
 
-  public set(name: ts.Identifier): void {
-    if (!this._data.has(name.escapedText as string)) {
+  public set(name: string): void {
+    if (!this._data.has(name)) {
       throw new Error(`Variable is not declared.`);
     }
-    this._data.get(name.escapedText as string)!.isInitialized = true;
+    this._data.get(name)!.isInitialized = true;
+  }
+
+  public getType(name: string): string | null {
+    return this._data.get(name)?.type ?? this._parent?.getType(name) ?? null;
   }
 }

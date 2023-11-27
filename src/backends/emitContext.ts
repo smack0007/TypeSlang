@@ -5,6 +5,7 @@ import { VariableScope } from "./variableScope.ts";
 import type { IsUsed } from "../markers.ts";
 import { hasTypeProperty, mapTypeName } from "./typeUtils.ts";
 import { isAddressOfExpression } from "./customNodes.ts";
+import { EmitError } from "./emitError.ts";
 
 export class EmitContext {
   private _outputStack = new Stack<StringBuilder>([new StringBuilder()]);
@@ -31,7 +32,7 @@ export class EmitContext {
   }
 
   public pushScope(): void {
-    this._scopeStack.push(new VariableScope(this));
+    this._scopeStack.push(new VariableScope(this, this.scope));
   }
 
   public popScope(): void {
@@ -42,48 +43,60 @@ export class EmitContext {
     return this._scopeStack.top;
   }
 
-  public declare(name: ts.Identifier, type: string): void {
+  public declare(name: string, type: string): void {
     this.scope.declare(name, type);
   }
 
-  public set(name: ts.Identifier): void {
+  public set(name: string): void {
     this.scope.set(name);
   }
 
   public getType(
-    node: ts.Node,
+    nameOrNode: string | ts.Node,
     options: {
       initializer?: ts.Expression;
     } = {},
   ): string {
-    let result: string | undefined = undefined;
+    let result: string | null = null;
 
-    if (hasTypeProperty(node)) {
-      const typeName = node.type.getText();
-      result = mapTypeName(this.types, node, typeName);
-    }
+    if (typeof nameOrNode === "string") {
+      result = this.scope.getType(nameOrNode);
+    } else {
+      if (ts.isIdentifier(nameOrNode)) {
+        result = this.scope.getType(nameOrNode.getText());
+      }
 
-    if (ts.isFunctionDeclaration(node)) {
-      const signature = this._typeChecker.getSignatureFromDeclaration(node);
-      const type = signature!.getReturnType();
-      const typeName = this._typeChecker.typeToString(type);
-      result = mapTypeName(this.types, node, typeName);
-    }
+      if (hasTypeProperty(nameOrNode)) {
+        const typeName = nameOrNode.type.getText();
+        result = mapTypeName(this.types, typeName);
+      }
 
-    if (result === undefined && options.initializer && isAddressOfExpression(options.initializer)) {
-      result = this.getType(options.initializer.arguments[0]);
+      if (ts.isFunctionDeclaration(nameOrNode)) {
+        const signature = this._typeChecker.getSignatureFromDeclaration(nameOrNode);
+        const type = signature!.getReturnType();
+        const typeName = this._typeChecker.typeToString(type);
+        result = mapTypeName(this.types, typeName);
+      }
 
-      if (result.startsWith("Array<") && result.endsWith(">")) {
-        result = result.replace("Array<", "Pointer<");
-      } else {
-        result = `Pointer<${result}>`;
+      if (result === null && options.initializer && isAddressOfExpression(options.initializer)) {
+        result = this.getType(options.initializer.arguments[0]);
+
+        if (result.startsWith("Array<") && result.endsWith(">")) {
+          result = result.replace("Array<", "Pointer<");
+        } else {
+          result = `Pointer<${result}>`;
+        }
+      }
+
+      if (result === null) {
+        const type = this._typeChecker.getTypeAtLocation(nameOrNode);
+        const typeName = this._typeChecker.typeToString(type);
+        result = mapTypeName(this.types, typeName);
       }
     }
 
-    if (result === undefined) {
-      const type = this._typeChecker.getTypeAtLocation(node);
-      const typeName = this._typeChecker.typeToString(type);
-      result = mapTypeName(this.types, node, typeName);
+    if (result === null) {
+      throw new Error(`Failed to get type of '${nameOrNode}'.`);
     }
 
     return result;
