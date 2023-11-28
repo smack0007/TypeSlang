@@ -10,11 +10,8 @@ import { EmitContext } from "../emitContext.ts";
 import { EmitError } from "../emitError.ts";
 import type { EmitResult } from "../emitResult.ts";
 import { withIsUsed } from "../../markers.ts";
-import { isAddressOfExpression } from "../customNodes.ts";
-
-function isPointerType(context: EmitContext, type: string): boolean {
-  return type.includes("Pointer<") && type.endsWith(">");
-}
+import { isAddressOfExpression, isNumberToStringExpression } from "../customNodes.ts";
+import { NUMBER_SUPPORTED_RADIX } from "../../constants.ts";
 
 function shouldEmitParenthesisForPropertyAccessExpression(context: EmitContext, propertySourceType: string): boolean {
   // TODO: This isn't sustainable obviously. Put some real logic behind this.
@@ -598,8 +595,34 @@ function emitBooleanLiteral(context: EmitContext, booleanLiteral: ts.BooleanLite
 }
 
 function emitCallExpression(context: EmitContext, callExpression: ts.CallExpression): void {
-  if (isAddressOfExpression(callExpression)) {
+  if (isAddressOfExpression(context, callExpression)) {
     emitCallExpressionAsAddressOfOperator(context, callExpression);
+    return;
+  }
+
+  if (isNumberToStringExpression(context, callExpression)) {
+    context.output.append("Number::toString(");
+    emitExpression(context, callExpression.expression.expression);
+
+    if (callExpression.arguments.length === 1) {
+      context.output.append(", ");
+
+      if (ts.isNumericLiteral(callExpression.arguments[0])) {
+        if (!NUMBER_SUPPORTED_RADIX.includes(callExpression.arguments[0].getText())) {
+          throw new EmitError(
+            context,
+            callExpression.arguments[0],
+            `Radix of ${callExpression.arguments[0].getText()} is not supported.`,
+          );
+        }
+
+        emitNumericLiteral(context, callExpression.arguments[0]);
+      } else {
+        emitExpression(context, callExpression.arguments[0]);
+      }
+    }
+
+    context.output.append(")");
     return;
   }
 
@@ -703,7 +726,7 @@ function emitPropertyAccessExpression(
 ): void {
   const expressionType = context.getType(propertyAccessExpression.expression);
 
-  if (isPointerType(context, expressionType) && ts.isIdentifier(propertyAccessExpression.name)) {
+  if (context.isPointerTypeName(expressionType) && ts.isIdentifier(propertyAccessExpression.name)) {
     if (propertyAccessExpression.name.getText() === "addressOf") {
       context.output.append("(void*)");
       emitExpression(context, propertyAccessExpression.expression);

@@ -14,9 +14,13 @@ typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
+// clang-format off
+#include "error.cpp"
 #include "array.cpp"
 #include "console.cpp"
-#include "pointers.cpp"
+#include "pointer.cpp"
 #include "string.cpp"
+#include "number.cpp"
+// clang-format on
 
 JS::Console console;

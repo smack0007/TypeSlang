@@ -22,6 +22,7 @@ function main(): i32 {
 
   // arrays();
   // booleans();
+  numbers();
   // whileLoop();
   // doWhile();
   // floats();
@@ -58,6 +59,18 @@ function booleans(): void {
   } else {
     console.info("Condition is false.");
   }
+}
+
+function numbers(): void {
+  console.info((0).toString());
+  console.info("0b" + (1).toString(2));
+  console.info("0x" + (2).toString(16));
+
+  const number3 = 3;
+  console.info(number3.toString(10));
+
+  const foo = { bar: 4 };
+  console.info(foo.bar.toString());
 }
 
 function whileLoop(): void {
@@ -120,11 +133,11 @@ function greetPerson(person: Person): void {
 }
 
 function pointers(): void {
-  const data: u8[] = [0, 1, 0, 0];
+  const data: u8[] = [0xef, 0xbe, 0xad, 0xde];
   const dataPtr = Pointer(data);
   console.info(dataPtr.addressOf);
   console.info(dataPtr[0], dataPtr[1], dataPtr[2], dataPtr[3]);
 
   const dataPtrU32: ptr<u32> = Pointer(data) as ptr<u32>;
-  console.info(dataPtrU32.dereference);
+  console.info("0x" + dataPtrU32.dereference.toString(16));
 }

@@ -78,7 +78,7 @@ export class EmitContext {
         result = mapTypeName(this.types, typeName);
       }
 
-      if (result === null && options.initializer && isAddressOfExpression(options.initializer)) {
+      if (result === null && options.initializer && isAddressOfExpression(this, options.initializer)) {
         result = this.getType(options.initializer.arguments[0]);
 
         if (result.startsWith("Array<") && result.endsWith(">")) {
@@ -100,5 +100,24 @@ export class EmitContext {
     }
 
     return result;
+  }
+
+  public isPointerTypeName(typeName: string): boolean {
+    return typeName.startsWith("Pointer<") && typeName.endsWith(">");
+  }
+
+  public isNumberTypeName(typeName: string): boolean {
+    return (
+      typeName === "f32" ||
+      typeName === "f64" ||
+      typeName === "i8" ||
+      typeName === "i16" ||
+      typeName === "i32" ||
+      typeName === "i64" ||
+      typeName === "u8" ||
+      typeName === "u16" ||
+      typeName === "u32" ||
+      typeName === "u64"
+    );
   }
 }
