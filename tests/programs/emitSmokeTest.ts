@@ -120,8 +120,11 @@ function greetPerson(person: Person): void {
 }
 
 function pointers(): void {
-  const data: u8[] = [1, 2, 3, 4];
+  const data: u8[] = [0, 1, 0, 0];
   const dataPtr = Pointer(data);
   console.info(dataPtr.addressOf);
   console.info(dataPtr[0], dataPtr[1], dataPtr[2], dataPtr[3]);
+
+  const dataPtrU32: ptr<u32> = Pointer(data) as ptr<u32>;
+  console.info(dataPtrU32.dereference);
 }

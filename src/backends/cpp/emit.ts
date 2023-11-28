@@ -514,7 +514,7 @@ function emitAsExpression(context: EmitContext, asExpression: ts.AsExpression): 
     }
   } else {
     context.output.append("(");
-    emitType(context, asExpression.type);
+    context.output.append(type);
     context.output.append(")");
     emitExpression(context, asExpression.expression);
   }
@@ -703,14 +703,16 @@ function emitPropertyAccessExpression(
 ): void {
   const expressionType = context.getType(propertyAccessExpression.expression);
 
-  if (
-    isPointerType(context, expressionType) &&
-    ts.isIdentifier(propertyAccessExpression.name) &&
-    propertyAccessExpression.name.getText() === "addressOf"
-  ) {
-    context.output.append("(void*)");
-    emitExpression(context, propertyAccessExpression.expression);
-    return;
+  if (isPointerType(context, expressionType) && ts.isIdentifier(propertyAccessExpression.name)) {
+    if (propertyAccessExpression.name.getText() === "addressOf") {
+      context.output.append("(void*)");
+      emitExpression(context, propertyAccessExpression.expression);
+      return;
+    } else if (propertyAccessExpression.name.getText() === "dereference") {
+      context.output.append("*");
+      emitExpression(context, propertyAccessExpression.expression);
+      return;
+    }
   }
 
   emitExpression(context, propertyAccessExpression.expression);

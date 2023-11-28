@@ -16,6 +16,7 @@ type Unpacked<T> = T extends (infer U)[] ? U : T;
 
 type Pointer<T> = {
   get addressOf(): bigint;
+  get dereference(): T;
   [index: number]: T;
 };
 
@@ -24,5 +25,5 @@ type PointerConstructor = {
   <T>(value: T): Pointer<Unpacked<T>>;
 };
 
-declare var Pointer: PointerConstructor;
+declare const Pointer: PointerConstructor;
 type ptr<T> = Pointer<T>;
