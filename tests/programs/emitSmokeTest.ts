@@ -22,7 +22,7 @@ function main(): i32 {
 
   // arrays();
   // booleans();
-  numbers();
+  // numbers();
   // whileLoop();
   // doWhile();
   // floats();
@@ -138,6 +138,6 @@ function pointers(): void {
   console.info(dataPtr.addressOf);
   console.info(dataPtr[0], dataPtr[1], dataPtr[2], dataPtr[3]);
 
-  const dataPtrU32: ptr<u32> = Pointer(data) as ptr<u32>;
+  const dataPtrU32 = Pointer<u32>(data);
   console.info("0x" + dataPtrU32.dereference.toString(16));
 }

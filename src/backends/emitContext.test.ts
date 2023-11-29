@@ -45,7 +45,7 @@ test("should work", () => {
   const context = createEmitContext("const foo = 42;");
   const statement = context.sourceFile.statements.at(0) as ts.VariableStatement;
   context.declare("foo", "i32");
-  assert.strictEqual(context.getType("foo"), "i32");
+  assert.strictEqual(context.getTypeName("foo"), "i32");
 });
 
 test(EmitContext.prototype.isPointerTypeName.name, () => {

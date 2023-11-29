@@ -4,8 +4,8 @@ import { StringBuilder } from "../stringBuilder.ts";
 import { VariableScope } from "./variableScope.ts";
 import type { IsUsed } from "../markers.ts";
 import { hasTypeProperty, mapTypeName } from "./typeUtils.ts";
-import { isAddressOfExpression } from "./customNodes.ts";
-import { EmitError } from "./emitError.ts";
+import { isPointerCastExpression } from "./customNodes.ts";
+import { isAsConstExpression, nodeKindString } from "../tsUtils.ts";
 
 export class EmitContext {
   private _outputStack = new Stack<StringBuilder>([new StringBuilder()]);
@@ -51,7 +51,7 @@ export class EmitContext {
     this.scope.set(name);
   }
 
-  public getType(
+  public getTypeName(
     nameOrNode: string | ts.Node,
     options: {
       initializer?: ts.Expression;
@@ -62,30 +62,44 @@ export class EmitContext {
     if (typeof nameOrNode === "string") {
       result = this.scope.getType(nameOrNode);
     } else {
-      if (ts.isIdentifier(nameOrNode)) {
+      // Ignore "as const" expressions
+      if (isAsConstExpression(nameOrNode)) {
+        result = this.getTypeName(nameOrNode.expression);
+      }
+
+      if (result === null && ts.isIdentifier(nameOrNode)) {
         result = this.scope.getType(nameOrNode.getText());
       }
 
-      if (hasTypeProperty(nameOrNode)) {
+      if (result === null && hasTypeProperty(nameOrNode)) {
         const typeName = nameOrNode.type.getText();
         result = mapTypeName(this.types, typeName);
       }
 
-      if (ts.isFunctionDeclaration(nameOrNode)) {
+      if (result === null && ts.isFunctionDeclaration(nameOrNode)) {
         const signature = this._typeChecker.getSignatureFromDeclaration(nameOrNode);
         const type = signature!.getReturnType();
         const typeName = this._typeChecker.typeToString(type);
         result = mapTypeName(this.types, typeName);
       }
 
-      if (result === null && options.initializer && isAddressOfExpression(this, options.initializer)) {
-        result = this.getType(options.initializer.arguments[0]);
-
-        if (result.startsWith("Array<") && result.endsWith(">")) {
-          result = result.replace("Array<", "Pointer<");
-        } else {
+      if (result === null && ts.isExpression(nameOrNode) && isPointerCastExpression(this, nameOrNode)) {
+        if (nameOrNode.typeArguments && nameOrNode.typeArguments[0]) {
+          result = nameOrNode.typeArguments[0].getText();
           result = `Pointer<${result}>`;
+        } else {
+          result = this.getTypeName(nameOrNode.arguments[0]);
+
+          if (result.startsWith("Array<") && result.endsWith(">")) {
+            result = result.replace("Array<", "Pointer<");
+          } else {
+            result = `Pointer<${result}>`;
+          }
         }
+      }
+
+      if (result === null && options.initializer) {
+        result = this.getTypeName(options.initializer);
       }
 
       if (result === null) {
@@ -95,8 +109,10 @@ export class EmitContext {
       }
     }
 
-    if (result === null) {
-      throw new Error(`Failed to get type of '${nameOrNode}'.`);
+    if (result === null || result === "const") {
+      throw new Error(
+        `Failed to get type of '${typeof nameOrNode === "string" ? nameOrNode : nodeKindString(nameOrNode)}'.`,
+      );
     }
 
     return result;

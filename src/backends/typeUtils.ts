@@ -48,6 +48,8 @@ export function mapTypeName(types: IsUsed<ts.TypeAliasDeclaration>[], typeName: 
 
   switch (typeName) {
     case "boolean":
+    case "true":
+    case "false":
       typeName = "bool";
       break;
 

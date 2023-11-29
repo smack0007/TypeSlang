@@ -21,8 +21,8 @@ type Pointer<T> = {
 };
 
 type PointerConstructor = {
-  new <T>(value: T): Pointer<Unpacked<T>>;
-  <T>(value: T): Pointer<Unpacked<T>>;
+  new <T>(value: T | T[]): Pointer<Unpacked<T>>;
+  <T>(value: T | T[]): Pointer<Unpacked<T>>;
 };
 
 declare const Pointer: PointerConstructor;
