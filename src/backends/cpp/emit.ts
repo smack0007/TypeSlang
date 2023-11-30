@@ -735,7 +735,11 @@ function emitPropertyAccessExpression(
   }
 
   emitExpression(context, propertyAccessExpression.expression);
-  context.output.append(".");
+  if (context.isPointerTypeName(expressionType)) {
+    context.output.append("->");
+  } else {
+    context.output.append(".");
+  }
   emitMemberName(context, propertyAccessExpression.name);
 
   // NOTE: Properties are not supported in C++ so we have to call

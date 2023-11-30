@@ -140,4 +140,11 @@ function pointers(): void {
 
   const dataPtrU32 = Pointer<u32>(data);
   console.info("0x" + dataPtrU32.dereference.toString(16));
+
+  const point: Point = { x: 1.2, y: 3.4 };
+  logPointPointer(Pointer(point));
+}
+
+function logPointPointer(pointPtr: ptr<Point>): void {
+  console.info(`(${pointPtr.x}, ${pointPtr.y})`);
 }

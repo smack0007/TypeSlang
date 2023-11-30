@@ -12,17 +12,17 @@ type u64 = bigint;
 
 type NativeTypes = bool | f32 | f64 | i8 | i16 | i32 | i64 | u8 | u16 | u32 | u64;
 
-type Unpacked<T> = T extends (infer U)[] ? U : T;
-
-type Pointer<T> = {
+type Pointer<T> = T & {
   get addressOf(): bigint;
   get dereference(): T;
   [index: number]: T;
 };
 
+type UnpackPointer<T> = T extends (infer U)[] ? U : T;
+
 type PointerConstructor = {
-  new <T>(value: T | T[]): Pointer<Unpacked<T>>;
-  <T>(value: T | T[]): Pointer<Unpacked<T>>;
+  new <T>(value: T | T[]): Pointer<UnpackPointer<T>>;
+  <T>(value: T | T[]): Pointer<UnpackPointer<T>>;
 };
 
 declare const Pointer: PointerConstructor;
