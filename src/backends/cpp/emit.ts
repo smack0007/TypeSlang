@@ -839,7 +839,3 @@ function emitTemplateExpression(context: EmitContext, templateExpression: ts.Tem
 
   context.output.append(")");
 }
-
-function emitType(context: EmitContext, type: ts.TypeNode): void {
-  context.output.append(context.getTypeName(type));
-}

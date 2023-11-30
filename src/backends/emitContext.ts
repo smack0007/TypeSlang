@@ -2,10 +2,11 @@ import ts from "typescript";
 import { Stack } from "../stack.ts";
 import { StringBuilder } from "../stringBuilder.ts";
 import { VariableScope } from "./variableScope.ts";
-import type { IsUsed } from "../markers.ts";
+import { withIsUsed, type IsUsed } from "../markers.ts";
 import { hasTypeProperty, mapTypeName } from "./typeUtils.ts";
 import { isPointerCastExpression } from "./customNodes.ts";
-import { isAsConstExpression, nodeKindString } from "../tsUtils.ts";
+import { createTypeAliasDeclarationFromString, isAsConstExpression, nodeKindString } from "../tsUtils.ts";
+import { EmitError } from "./emitError.ts";
 
 export class EmitContext {
   private _outputStack = new Stack<StringBuilder>([new StringBuilder()]);
@@ -62,25 +63,28 @@ export class EmitContext {
     if (typeof nameOrNode === "string") {
       result = this.scope.getType(nameOrNode);
     } else {
+      let shouldMapType = false;
+
       // Ignore "as const" expressions
       if (isAsConstExpression(nameOrNode)) {
         result = this.getTypeName(nameOrNode.expression);
       }
 
+      // If it's an identifier get the type by name.
       if (result === null && ts.isIdentifier(nameOrNode)) {
         result = this.scope.getType(nameOrNode.getText());
       }
 
       if (result === null && hasTypeProperty(nameOrNode)) {
-        const typeName = nameOrNode.type.getText();
-        result = mapTypeName(this.types, typeName);
+        result = nameOrNode.type.getText();
+        shouldMapType = true;
       }
 
       if (result === null && ts.isFunctionDeclaration(nameOrNode)) {
         const signature = this._typeChecker.getSignatureFromDeclaration(nameOrNode);
         const type = signature!.getReturnType();
-        const typeName = this._typeChecker.typeToString(type);
-        result = mapTypeName(this.types, typeName);
+        result = this._typeChecker.typeToString(type);
+        shouldMapType = true;
       }
 
       if (result === null && ts.isExpression(nameOrNode) && isPointerCastExpression(this, nameOrNode)) {
@@ -104,14 +108,32 @@ export class EmitContext {
 
       if (result === null) {
         const type = this._typeChecker.getTypeAtLocation(nameOrNode);
-        const typeName = this._typeChecker.typeToString(type);
-        result = mapTypeName(this.types, typeName);
+        result = this._typeChecker.typeToString(type);
+        shouldMapType = true;
+      }
+
+      if (shouldMapType) {
+        result = mapTypeName(result);
       }
     }
 
-    if (result === null || result === "const") {
+    if (result !== null && result.startsWith("{")) {
+      let knownType = this.types.find((x) => x.type.getText() === result);
+
+      if (knownType === undefined) {
+        knownType = withIsUsed(createTypeAliasDeclarationFromString("_struct", result));
+        this.types.push(knownType);
+      }
+
+      result = knownType.name.getText();
+    }
+
+    if (result === null || ["any", "const"].includes(result)) {
+      // TODO: Throw an EmitError here.
       throw new Error(
-        `Failed to get type of '${typeof nameOrNode === "string" ? nameOrNode : nodeKindString(nameOrNode)}'.`,
+        `Failed to get type of ${
+          typeof nameOrNode === "string" ? `identifier '${nameOrNode}'` : `node '${nodeKindString(nameOrNode)}'`
+        }.`,
       );
     }
 
