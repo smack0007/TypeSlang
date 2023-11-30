@@ -15,7 +15,7 @@ export function isNumberToStringExpression(
     ts.isPropertyAccessExpression(expression.expression) &&
     context.isNumberTypeName(context.getTypeName(expression.expression.expression)) &&
     ts.isIdentifier(expression.expression.name) &&
-    expression.expression.name.getText() === "toString" &&
+    expression.expression.name.text === "toString" &&
     (expression.arguments.length === 0 || expression.arguments.length === 1)
   );
 }
@@ -32,7 +32,7 @@ export function isPointerCastExpression(
   return (
     ts.isCallExpression(expression) &&
     ts.isIdentifier(expression.expression) &&
-    expression.expression.getText() === "Pointer" &&
+    expression.expression.text === "Pointer" &&
     expression.arguments.length === 1
   );
 }

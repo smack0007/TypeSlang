@@ -128,8 +128,8 @@ function emitFunctionDeclaration(
     context.output.append(" ");
 
     context.functions.push(functionDeclaration);
-    context.declare(functionDeclaration.name.getText(), "function");
-    context.set(functionDeclaration.name.getText());
+    context.declare(functionDeclaration.name.text, "function");
+    context.set(functionDeclaration.name.text);
 
     context.pushScope();
     for (const parameter of functionDeclaration.parameters) {
@@ -603,11 +603,11 @@ function emitCallExpression(context: EmitContext, callExpression: ts.CallExpress
       context.output.append(", ");
 
       if (ts.isNumericLiteral(callExpression.arguments[0])) {
-        if (!NUMBER_SUPPORTED_RADIX.includes(callExpression.arguments[0].getText())) {
+        if (!NUMBER_SUPPORTED_RADIX.includes(callExpression.arguments[0].text)) {
           throw new EmitError(
             context,
             callExpression.arguments[0],
-            `Radix of ${callExpression.arguments[0].getText()} is not supported.`,
+            `Radix of ${callExpression.arguments[0].text} is not supported.`,
           );
         }
 
@@ -723,11 +723,11 @@ function emitPropertyAccessExpression(
   const expressionType = context.getTypeName(propertyAccessExpression.expression);
 
   if (context.isPointerTypeName(expressionType) && ts.isIdentifier(propertyAccessExpression.name)) {
-    if (propertyAccessExpression.name.getText() === "addressOf") {
+    if (propertyAccessExpression.name.text === "addressOf") {
       context.output.append("(void*)");
       emitExpression(context, propertyAccessExpression.expression);
       return;
-    } else if (propertyAccessExpression.name.getText() === "dereference") {
+    } else if (propertyAccessExpression.name.text === "dereference") {
       context.output.append("*");
       emitExpression(context, propertyAccessExpression.expression);
       return;
@@ -742,8 +742,7 @@ function emitPropertyAccessExpression(
   }
   emitMemberName(context, propertyAccessExpression.name);
 
-  // NOTE: Properties are not supported in C++ so we have to call
-  // a method.
+  // NOTE: Properties are not supported in C++ so we have to call a method.
   if (
     !context.isEmittingCallExpressionExpression &&
     shouldEmitParenthesisForPropertyAccessExpression(context, context.getTypeName(propertyAccessExpression.expression))

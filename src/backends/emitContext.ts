@@ -53,68 +53,63 @@ export class EmitContext {
   }
 
   public getTypeName(
-    nameOrNode: string | ts.Node,
+    node: ts.Node,
     options: {
       initializer?: ts.Expression;
     } = {},
   ): string {
     let result: string | null = null;
+    let shouldMapType = false;
 
-    if (typeof nameOrNode === "string") {
-      result = this.scope.getType(nameOrNode);
-    } else {
-      let shouldMapType = false;
+    // Ignore "as const" expressions
+    if (isAsConstExpression(node)) {
+      result = this.getTypeName(node.expression);
+    }
 
-      // Ignore "as const" expressions
-      if (isAsConstExpression(nameOrNode)) {
-        result = this.getTypeName(nameOrNode.expression);
-      }
+    // If it's an identifier get the type by name.
+    if (result === null && ts.isIdentifier(node)) {
+      result = this.scope.getType(node.text);
+    }
 
-      // If it's an identifier get the type by name.
-      if (result === null && ts.isIdentifier(nameOrNode)) {
-        result = this.scope.getType(nameOrNode.getText());
-      }
+    if (result === null && hasTypeProperty(node)) {
+      result = node.type.getText();
+      shouldMapType = true;
+    }
 
-      if (result === null && hasTypeProperty(nameOrNode)) {
-        result = nameOrNode.type.getText();
-        shouldMapType = true;
-      }
+    if (result === null && ts.isFunctionDeclaration(node)) {
+      const signature = this._typeChecker.getSignatureFromDeclaration(node);
+      const type = signature!.getReturnType();
+      result = this._typeChecker.typeToString(type);
+      shouldMapType = true;
+    }
 
-      if (result === null && ts.isFunctionDeclaration(nameOrNode)) {
-        const signature = this._typeChecker.getSignatureFromDeclaration(nameOrNode);
-        const type = signature!.getReturnType();
-        result = this._typeChecker.typeToString(type);
-        shouldMapType = true;
-      }
+    if (result === null && ts.isExpression(node) && isPointerCastExpression(this, node)) {
+      if (node.typeArguments && node.typeArguments[0]) {
+        result = node.typeArguments[0].getText();
+        result = `Pointer<${result}>`;
+      } else {
+        result = this.getTypeName(node.arguments[0]);
 
-      if (result === null && ts.isExpression(nameOrNode) && isPointerCastExpression(this, nameOrNode)) {
-        if (nameOrNode.typeArguments && nameOrNode.typeArguments[0]) {
-          result = nameOrNode.typeArguments[0].getText();
-          result = `Pointer<${result}>`;
+        if (result.startsWith("Array<") && result.endsWith(">")) {
+          result = result.replace("Array<", "Pointer<");
         } else {
-          result = this.getTypeName(nameOrNode.arguments[0]);
-
-          if (result.startsWith("Array<") && result.endsWith(">")) {
-            result = result.replace("Array<", "Pointer<");
-          } else {
-            result = `Pointer<${result}>`;
-          }
+          result = `Pointer<${result}>`;
         }
       }
+    }
 
-      if (result === null && options.initializer) {
-        result = this.getTypeName(options.initializer);
-      }
+    if (result === null && options.initializer) {
+      result = this.getTypeName(options.initializer);
+    }
 
-      if (result === null) {
-        const type = this._typeChecker.getTypeAtLocation(nameOrNode);
-        result = this._typeChecker.typeToString(type);
-        shouldMapType = true;
-      }
+    if (result === null) {
+      const type = this._typeChecker.getTypeAtLocation(node);
+      result = this._typeChecker.typeToString(type);
+      shouldMapType = true;
+    }
 
-      if (shouldMapType) {
-        result = mapTypeName(result);
-      }
+    if (shouldMapType) {
+      result = mapTypeName(result);
     }
 
     if (result !== null && result.startsWith("{")) {
@@ -125,16 +120,11 @@ export class EmitContext {
         this.types.push(knownType);
       }
 
-      result = knownType.name.getText();
+      result = knownType.name.text;
     }
 
     if (result === null || ["any", "const"].includes(result)) {
-      // TODO: Throw an EmitError here.
-      throw new Error(
-        `Failed to get type of ${
-          typeof nameOrNode === "string" ? `identifier '${nameOrNode}'` : `node '${nodeKindString(nameOrNode)}'`
-        }.`,
-      );
+      throw new EmitError(this, node, `Failed to get type of ${nodeKindString(node)} node.`);
     }
 
     return result;

@@ -22,7 +22,7 @@ export class VariableScope {
     }
     this._data.set(name, new VariableData(type));
 
-    const typeAliasDeclaration = this._context.types.find((x) => x.name.getText() === type);
+    const typeAliasDeclaration = this._context.types.find((x) => x.name.text === type);
     if (typeAliasDeclaration) {
       typeAliasDeclaration.isUsed = true;
     }
