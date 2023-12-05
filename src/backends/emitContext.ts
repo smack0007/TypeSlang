@@ -96,6 +96,7 @@ export class EmitContext {
           result = `Pointer<${result}>`;
         }
       }
+      shouldMapType = true;
     }
 
     if (result === null && options.initializer) {
