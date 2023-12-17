@@ -1,104 +1,12 @@
 import ts from "typescript";
-import { hasFlag, isFirstCharacterDigit } from "../../utils.js";
-import {
-  createTypeAliasDeclarationFromString,
-  kindString,
-  nodeKindString,
-  transformInterfaceDeclarationToTypeAliasDeclaration,
-} from "../../tsUtils.js";
-import { EmitContext } from "../emitContext.js";
-import { EmitError } from "../emitError.js";
-import type { EmitResult } from "../emitResult.js";
-import { withIsUsed } from "../../markers.js";
-
-function mapTypeName(context: EmitContext, node: ts.Node, typeName: string): string {
-  if (typeName.startsWith('"') && typeName.endsWith('"')) {
-    typeName = "string";
-  }
-
-  if (typeName.startsWith("number")) {
-    typeName = typeName.replace("number", "i32");
-  }
-
-  if (isFirstCharacterDigit(typeName)) {
-    if (typeName.includes(".")) {
-      typeName = "f64";
-    } else {
-      typeName = "i32";
-    }
-  }
-
-  // TODO: This probably doesn't work for arrays of arrays
-  if (typeName.endsWith("[]")) {
-    typeName = typeName.substring(0, typeName.length - 2);
-    typeName = `Array<${typeName}>`;
-  }
-
-  if (typeName.startsWith("{")) {
-    let knownType = context.types.find((x) => x.type.getText() === typeName);
-
-    if (knownType === undefined) {
-      knownType = withIsUsed(createTypeAliasDeclarationFromString("_struct", typeName));
-      context.types.push(knownType);
-    }
-
-    return knownType.name.getText();
-  }
-
-  switch (typeName) {
-    case "boolean":
-      typeName = "bool";
-      break;
-  }
-
-  if (["any"].includes(typeName)) {
-    throw new EmitError(context, node, `Type "${typeName}" is unable to be emitted.`);
-  }
-
-  return typeName;
-}
-
-function hasTypeProperty(node: ts.Node): node is ts.Node & { type: ts.TypeNode } {
-  return !!(node as unknown as { type: ts.Type }).type;
-}
-
-function getTypeFromNode(context: EmitContext, node: ts.Node, initializer?: ts.Expression): ts.Type {
-  return context.typeChecker.getTypeAtLocation(node);
-}
-
-function getTypeAsStringFromNode(context: EmitContext, node: ts.Node, initializer?: ts.Expression): string {
-  let result: string | undefined = undefined;
-
-  if (hasTypeProperty(node)) {
-    const typeName = node.type.getText();
-    result = mapTypeName(context, node, typeName);
-  }
-
-  if (result === undefined) {
-    const type = getTypeFromNode(context, node, initializer);
-    const typeName = context.typeChecker.typeToString(type);
-    result = mapTypeName(context, node, typeName);
-  }
-
-  return result;
-}
-
-function getFunctionReturnType(context: EmitContext, functionDeclaration: ts.FunctionDeclaration): string {
-  const signature = context.typeChecker.getSignatureFromDeclaration(functionDeclaration);
-  const type = signature!.getReturnType();
-  const typeName = context.typeChecker.typeToString(type);
-  return mapTypeName(context, functionDeclaration, typeName);
-}
-
-function getFunctionParameterType(
-  context: EmitContext,
-  parameter: ts.ParameterDeclaration,
-  initializer?: ts.Expression,
-): string {
-  const type = getTypeFromNode(context, parameter, initializer);
-  const typeName = context.typeChecker.typeToString(type);
-  return mapTypeName(context, parameter, typeName);
-}
+import { hasFlag } from "../../utils.ts";
+import { kindString, nodeKindString, transformInterfaceDeclarationToTypeAliasDeclaration } from "../../tsUtils.ts";
+import { EmitContext } from "../emitContext.ts";
+import { EmitError } from "../emitError.ts";
+import type { EmitResult } from "../emitResult.ts";
+import { withIsUsed } from "../../markers.ts";
+import { isPointerCastExpression, isNumberToStringExpression, PointerCastExpression } from "../customNodes.ts";
+import { NUMBER_SUPPORTED_RADIX } from "../../constants.ts";
 
 function shouldEmitParenthesisForPropertyAccessExpression(context: EmitContext, propertySourceType: string): boolean {
   // TODO: This isn't sustainable obviously. Put some real logic behind this.
@@ -188,7 +96,7 @@ function emitFunctionDeclaration(
   functionDeclaration: ts.FunctionDeclaration,
   options: Partial<EmitFunctionDeclarationOptions> = {},
 ): void {
-  const returnType = getFunctionReturnType(context, functionDeclaration);
+  const returnType = context.getTypeName(functionDeclaration);
 
   if (!functionDeclaration.name) {
     throw new EmitError(context, functionDeclaration, `Expected function name to be defined.`);
@@ -202,7 +110,7 @@ function emitFunctionDeclaration(
     }
 
     const parameter = functionDeclaration.parameters[i];
-    const parameterType = getFunctionParameterType(context, parameter);
+    const parameterType = context.getTypeName(parameter);
     context.output.append(`${parameterType} ${(parameter.name as ts.Identifier).escapedText}`);
   }
 
@@ -220,13 +128,13 @@ function emitFunctionDeclaration(
     context.output.append(" ");
 
     context.functions.push(functionDeclaration);
-    context.scope.declare(functionDeclaration.name, "function");
-    context.scope.set(functionDeclaration.name);
+    context.declare(functionDeclaration.name.text, "function");
+    context.set(functionDeclaration.name.text);
 
     context.pushScope();
     for (const parameter of functionDeclaration.parameters) {
-      const parameterType = getFunctionParameterType(context, parameter);
-      context.scope.declare(parameter.name as ts.Identifier, parameterType);
+      const parameterType = context.getTypeName(parameter);
+      context.declare(parameter.name.getText(), parameterType);
     }
 
     emitBlock(context, functionDeclaration.body);
@@ -284,7 +192,7 @@ function emitTypeAliasDeclaration(
     context.output.indent();
 
     for (const member of (typeAliasDeclaration.type as ts.TypeLiteralNode).members) {
-      const memberType = getTypeAsStringFromNode(context, member);
+      const memberType = context.getTypeName(member);
       context.output.append(`${memberType} `);
       emitIdentifier(context, member.name as ts.Identifier);
       context.output.appendLine(";");
@@ -458,20 +366,23 @@ function emitVariableDeclarationList(
   const { isGlobal = false, isConst = false } = options;
 
   for (const variableDeclaration of variableDeclarationList.declarations) {
-    const type = getTypeAsStringFromNode(context, variableDeclaration, variableDeclaration.initializer);
+    const type = context.getTypeName(variableDeclaration, { initializer: variableDeclaration.initializer });
+    context.emittingVariableDeclarationType = type;
 
     context.output.append(type);
     context.output.append(" ");
     emitIdentifier(context, variableDeclaration.name as ts.Identifier);
 
-    context.scope.declare(variableDeclaration.name as ts.Identifier, type);
+    context.declare(variableDeclaration.name.getText(), type);
 
     if (variableDeclaration.initializer) {
       context.output.append(" = ");
       emitExpression(context, variableDeclaration.initializer);
 
-      context.scope.set(variableDeclaration.name as ts.Identifier);
+      context.set(variableDeclaration.name.getText());
     }
+
+    context.emittingVariableDeclarationType = null;
   }
 }
 
@@ -556,7 +467,10 @@ function emitExpression(context: EmitContext, expression: ts.Expression): void {
 }
 
 function emitArrayLiteralExpression(context: EmitContext, arrayLiteralExpression: ts.ArrayLiteralExpression): void {
-  const type = getTypeAsStringFromNode(context, arrayLiteralExpression);
+  const type =
+    context.emittingVariableDeclarationType !== null
+      ? context.emittingVariableDeclarationType
+      : context.getTypeName(arrayLiteralExpression);
 
   context.output.append(`${type}({ `);
 
@@ -571,13 +485,13 @@ function emitArrayLiteralExpression(context: EmitContext, arrayLiteralExpression
 }
 
 function emitAsExpression(context: EmitContext, asExpression: ts.AsExpression): void {
-  // Ignore as const expressions
+  // Ignore "as const" expressions
   if (ts.isConstTypeReference(asExpression.type)) {
     emitExpression(context, asExpression.expression);
     return;
   }
 
-  const type = getTypeAsStringFromNode(context, asExpression);
+  const type = context.getTypeName(asExpression);
 
   if (asExpression.expression.kind === ts.SyntaxKind.NumericLiteral && (type === "f32" || type === "f64")) {
     emitNumericLiteral(context, asExpression.expression as ts.NumericLiteral);
@@ -592,7 +506,7 @@ function emitAsExpression(context: EmitContext, asExpression: ts.AsExpression): 
     }
   } else {
     context.output.append("(");
-    emitType(context, asExpression.type);
+    context.output.append(type);
     context.output.append(")");
     emitExpression(context, asExpression.expression);
   }
@@ -676,6 +590,37 @@ function emitBooleanLiteral(context: EmitContext, booleanLiteral: ts.BooleanLite
 }
 
 function emitCallExpression(context: EmitContext, callExpression: ts.CallExpression): void {
+  if (isPointerCastExpression(context, callExpression)) {
+    emitPointerCastExpression(context, callExpression);
+    return;
+  }
+
+  if (isNumberToStringExpression(context, callExpression)) {
+    context.output.append("Number::toString(");
+    emitExpression(context, callExpression.expression.expression);
+
+    if (callExpression.arguments.length === 1) {
+      context.output.append(", ");
+
+      if (ts.isNumericLiteral(callExpression.arguments[0])) {
+        if (!NUMBER_SUPPORTED_RADIX.includes(callExpression.arguments[0].text)) {
+          throw new EmitError(
+            context,
+            callExpression.arguments[0],
+            `Radix of ${callExpression.arguments[0].text} is not supported.`,
+          );
+        }
+
+        emitNumericLiteral(context, callExpression.arguments[0]);
+      } else {
+        emitExpression(context, callExpression.arguments[0]);
+      }
+    }
+
+    context.output.append(")");
+    return;
+  }
+
   try {
     context.isEmittingCallExpressionExpression = true;
     emitExpression(context, callExpression.expression);
@@ -696,6 +641,22 @@ function emitCallExpression(context: EmitContext, callExpression: ts.CallExpress
   }
 
   context.output.append(")");
+}
+
+function emitPointerCastExpression(context: EmitContext, pointerCastExpression: PointerCastExpression): void {
+  if (pointerCastExpression.arguments.length !== 1) {
+    throw new EmitError(
+      context,
+      pointerCastExpression,
+      `Failed to emit ${nodeKindString(pointerCastExpression)} as pointer cast in ${emitPointerCastExpression.name}.`,
+    );
+  }
+
+  context.output.append("(");
+  context.output.append(context.getTypeName(pointerCastExpression));
+  context.output.append(")");
+  context.output.append(`&`);
+  emitExpression(context, pointerCastExpression.arguments[0]);
 }
 
 function emitElementAccessExpression(context: EmitContext, elementAccessExpression: ts.ElementAccessExpression): void {
@@ -759,18 +720,32 @@ function emitPropertyAccessExpression(
   context: EmitContext,
   propertyAccessExpression: ts.PropertyAccessExpression,
 ): void {
+  const expressionType = context.getTypeName(propertyAccessExpression.expression);
+
+  if (context.isPointerTypeName(expressionType) && ts.isIdentifier(propertyAccessExpression.name)) {
+    if (propertyAccessExpression.name.text === "addressOf") {
+      context.output.append("(void*)");
+      emitExpression(context, propertyAccessExpression.expression);
+      return;
+    } else if (propertyAccessExpression.name.text === "dereference") {
+      context.output.append("*");
+      emitExpression(context, propertyAccessExpression.expression);
+      return;
+    }
+  }
+
   emitExpression(context, propertyAccessExpression.expression);
-  context.output.append(".");
+  if (context.isPointerTypeName(expressionType)) {
+    context.output.append("->");
+  } else {
+    context.output.append(".");
+  }
   emitMemberName(context, propertyAccessExpression.name);
 
-  // NOTE: Properties are not supported in C++ so we have to call
-  // a method.
+  // NOTE: Properties are not supported in C++ so we have to call a method.
   if (
     !context.isEmittingCallExpressionExpression &&
-    shouldEmitParenthesisForPropertyAccessExpression(
-      context,
-      getTypeAsStringFromNode(context, propertyAccessExpression.expression),
-    )
+    shouldEmitParenthesisForPropertyAccessExpression(context, context.getTypeName(propertyAccessExpression.expression))
   ) {
     context.output.append("()");
   }
@@ -789,8 +764,6 @@ function emitNumericLiteral(context: EmitContext, numcericLiteral: ts.NumericLit
 }
 
 function emitObjectLiteralExpression(context: EmitContext, objectLiteralExpression: ts.ObjectLiteralExpression): void {
-  const type = getTypeFromNode(context, objectLiteralExpression);
-
   context.output.append("{");
 
   for (let i = 0; i < objectLiteralExpression.properties.length; i++) {
@@ -864,8 +837,4 @@ function emitTemplateExpression(context: EmitContext, templateExpression: ts.Tem
   }
 
   context.output.append(")");
-}
-
-function emitType(context: EmitContext, type: ts.TypeNode): void {
-  context.output.append(getTypeAsStringFromNode(context, type));
 }

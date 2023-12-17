@@ -1,5 +1,7 @@
 # TypeSlang
 
+Currently running on [deno](https://deno.com/).
+
 ## Goals
 
 - Compile a specific subset of TypeScript to C++ (or other languages)

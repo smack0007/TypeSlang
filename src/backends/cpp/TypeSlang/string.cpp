@@ -1,5 +1,5 @@
-#include <string>
 #include <fmt/format.h>
+#include <string>
 
 namespace JS {
 class String {
@@ -29,6 +29,8 @@ public:
   size_t length() const { return _data.size(); }
 };
 } // namespace JS
+
+using string = JS::String;
 
 template <> struct fmt::formatter<JS::String> {
   template <typename ParseContext> constexpr auto parse(ParseContext &ctx) { return ctx.begin(); }

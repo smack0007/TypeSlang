@@ -22,10 +22,12 @@ function main(): i32 {
 
   // arrays();
   // booleans();
+  // numbers();
   // whileLoop();
   // doWhile();
   // floats();
-  structs();
+  // structs();
+  pointers();
 
   return 0;
 }
@@ -57,6 +59,18 @@ function booleans(): void {
   } else {
     console.info("Condition is false.");
   }
+}
+
+function numbers(): void {
+  console.info((0).toString());
+  console.info("0b" + (1).toString(2));
+  console.info("0x" + (2).toString(16));
+
+  const number3 = 3;
+  console.info(number3.toString(10));
+
+  const foo = { bar: 4 };
+  console.info(foo.bar.toString());
 }
 
 function whileLoop(): void {
@@ -116,4 +130,21 @@ function createPerson(name: string, age: number): Person {
 
 function greetPerson(person: Person): void {
   console.info(`Hello ${person.name} you are ${person.age} years old.`);
+}
+
+function pointers(): void {
+  const data: u8[] = [0xef, 0xbe, 0xad, 0xde];
+  const dataPtr = Pointer(data);
+  console.info(dataPtr.addressOf);
+  console.info(dataPtr[0], dataPtr[1], dataPtr[2], dataPtr[3]);
+
+  const dataPtrU32 = Pointer<u32[]>(data);
+  console.info("0x" + dataPtrU32[0].toString(16));
+
+  const point: Point = { x: 1.2, y: 3.4 };
+  logPointPointer(Pointer(point));
+}
+
+function logPointPointer(pointPtr: ptr<Point>): void {
+  console.info(`(${pointPtr.x}, ${pointPtr.y})`);
 }

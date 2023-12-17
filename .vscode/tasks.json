@@ -32,6 +32,22 @@
       "presentation": {
         "clear": true
       }
+    },
+    {
+      "label": "Run Tests",
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "type": "deno",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "command": "test",
+      "problemMatcher": ["$deno-test"],
+      "presentation": {
+        "clear": true
+      }
     }
   ]
 }
