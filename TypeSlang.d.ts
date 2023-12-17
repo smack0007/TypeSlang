@@ -5,10 +5,12 @@ type i8 = number;
 type i16 = number;
 type i32 = number;
 type i64 = bigint;
+type isize = bigint;
 type u8 = number;
 type u16 = number;
 type u32 = number;
 type u64 = bigint;
+type usize = bigint;
 
 type NativeTypes = bool | f32 | f64 | i8 | i16 | i32 | i64 | u8 | u16 | u32 | u64;
 
