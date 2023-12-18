@@ -14,12 +14,14 @@ type NativeTypes = bool | f32 | f64 | i8 | i16 | i32 | i64 | u8 | u16 | u32 | u6
 
 type Pointer<T> = {
   get addressOf(): bigint;
-  get dereference(): T;
 } & (T extends (infer U)[]
   ? {
+      get dereference(): U;
       [index: number]: U;
     }
-  : T);
+  : T & {
+      get dereference(): T;
+    });
 
 type PointerConstructor = {
   new <T>(value: T): Pointer<T>;
