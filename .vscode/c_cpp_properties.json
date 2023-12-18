@@ -12,7 +12,7 @@
     },
     {
       "name": "Win32",
-      "includePath": ["${workspaceFolder}/**"],
+      "includePath": ["${workspaceFolder}/**", "${workspaceFolder}/src/backends/cpp"],
       "defines": ["_DEBUG", "UNICODE", "_UNICODE"],
       "windowsSdkVersion": "10.0.20348.0",
       "compilerPath": "cl.exe",
