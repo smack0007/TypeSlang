@@ -1,5 +1,6 @@
 // This program should invoke each function in emit.ts at least once.
-import { malloc } from "std";
+// import { malloc } from "std";
+import { greet } from "./greet.ts";
 
 const USER_NAME = "smack0007";
 const MAGIC_NUMBER = 42;
@@ -18,6 +19,8 @@ function sayHello(name: string, age: number): void {
 }
 
 function main(): i32 {
+  greet("Bob");
+
   // sayHello(USER_NAME, MAGIC_NUMBER);
   // sayHello("Bob", 42 / 2);
 
@@ -152,6 +155,6 @@ function logPointPointer(pointPtr: ptr<Point>): void {
 }
 
 function memory(): void {
-  const memory = malloc(1024n);
-  console.info(memory.addressOf);
+  // const memory = malloc(1024n);
+  // console.info(memory.addressOf);
 }

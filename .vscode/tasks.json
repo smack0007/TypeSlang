@@ -39,11 +39,11 @@
         "kind": "test",
         "isDefault": true
       },
-      "type": "deno",
+      "type": "shell",
       "options": {
         "cwd": "${workspaceFolder}"
       },
-      "command": "test",
+      "command": "deno test",
       "problemMatcher": ["$deno-test"],
       "presentation": {
         "clear": true

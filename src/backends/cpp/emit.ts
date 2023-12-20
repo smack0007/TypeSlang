@@ -17,10 +17,8 @@ function shouldEmitParenthesisForPropertyAccessExpression(context: EmitContext, 
   return false;
 }
 
-export async function emit(typeChecker: ts.TypeChecker, sourceFile: ts.SourceFile): Promise<EmitResult> {
-  const context = new EmitContext(typeChecker, sourceFile);
-
-  await emitPreamble(context);
+export function emit(context: EmitContext, sourceFile: ts.SourceFile): EmitResult {
+  emitPreamble(context);
 
   const forwardDeclaraedStructs = context.output.insertPlaceholder();
   forwardDeclaraedStructs.appendLine("// Structs");
@@ -28,9 +26,7 @@ export async function emit(typeChecker: ts.TypeChecker, sourceFile: ts.SourceFil
   const fowardDeclaredFunctions = context.output.insertPlaceholder();
   fowardDeclaredFunctions.appendLine("// Functions");
 
-  for (const statement of sourceFile.statements) {
-    emitTopLevelStatement(context, statement);
-  }
+  emitSourceFile(context, sourceFile);
 
   context.pushOutput(forwardDeclaraedStructs);
   for (const type of context.types.filter((x) => x.isUsed && x.type.kind === ts.SyntaxKind.TypeLiteral)) {
@@ -51,9 +47,17 @@ export async function emit(typeChecker: ts.TypeChecker, sourceFile: ts.SourceFil
   };
 }
 
-async function emitPreamble(context: EmitContext): Promise<void> {
+function emitPreamble(context: EmitContext): void {
   context.output.appendLine("#include <TypeSlang/runtime.cpp>");
   context.output.appendLine("using namespace JS;");
+}
+
+function emitSourceFile(context: EmitContext, sourceFile: ts.SourceFile): void {
+  context.pushSourceFile(sourceFile);
+  for (const statement of sourceFile.statements) {
+    emitTopLevelStatement(context, statement);
+  }
+  context.popSourceFile();
 }
 
 function emitTopLevelStatement(context: EmitContext, statement: ts.Statement): void {
@@ -148,6 +152,30 @@ function emitFunctionDeclaration(
 }
 
 function emitImportDeclaration(context: EmitContext, importDeclaration: ts.ImportDeclaration): void {
+  if (ts.isStringLiteral(importDeclaration.moduleSpecifier)) {
+    const moduleName = ts.resolveModuleName(
+      importDeclaration.moduleSpecifier.text,
+      context.sourceFile.fileName,
+      context.program.getCompilerOptions(),
+      context.compilerHost,
+    );
+
+    if (moduleName.resolvedModule) {
+      // If imported via a module name
+      if (moduleName.resolvedModule.isExternalLibraryImport) {
+      } else {
+        // Imported via a file path
+        const importedSourceFile = context.program.getSourceFile(moduleName.resolvedModule.resolvedFileName);
+
+        if (importedSourceFile) {
+          // TODO: We need to namespace the file somehow.
+          emitSourceFile(context, importedSourceFile);
+          return;
+        }
+      }
+    }
+  }
+
   throw new EmitError(
     context,
     importDeclaration,

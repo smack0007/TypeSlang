@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "types": ["./TypeSlang.d.ts"]
+  },
+  "imports": {
+    "std": "./TypeSlang.std.d.ts"
+  }
+}

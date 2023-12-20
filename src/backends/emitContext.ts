@@ -9,6 +9,9 @@ import { createTypeAliasDeclarationFromString, isAsConstExpression, nodeKindStri
 import { EmitError } from "./emitError.ts";
 
 export class EmitContext {
+  private _typeChecker: ts.TypeChecker;
+
+  private _sourceFileStack = new Stack<ts.SourceFile>();
   private _outputStack = new Stack<StringBuilder>([new StringBuilder()]);
   private _scopeStack = new Stack<VariableScope>([new VariableScope(this)]);
 
@@ -18,7 +21,31 @@ export class EmitContext {
   public isEmittingCallExpressionExpression = false;
   public emittingVariableDeclarationType: string | null = null;
 
-  constructor(private readonly _typeChecker: ts.TypeChecker, public readonly sourceFile: ts.SourceFile) {}
+  constructor(public readonly compilerHost: ts.CompilerHost, public readonly program: ts.Program) {
+    this._typeChecker = this.program.getTypeChecker();
+  }
+
+  public get sourceFile(): ts.SourceFile {
+    return this._sourceFileStack.top;
+  }
+
+  public get sourceFileName(): string {
+    let fileName = this.sourceFile.fileName;
+
+    if (fileName.startsWith(this.compilerHost.getCurrentDirectory())) {
+      fileName = fileName.substring(this.compilerHost.getCurrentDirectory().length);
+    }
+
+    return fileName;
+  }
+
+  public pushSourceFile(sourceFile: ts.SourceFile): void {
+    this._sourceFileStack.push(sourceFile);
+  }
+
+  public popSourceFile(): void {
+    this._sourceFileStack.pop();
+  }
 
   public get output(): StringBuilder {
     return this._outputStack.top;

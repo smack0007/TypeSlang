@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { SCRIPT_TARGET } from "./constants.ts";
+import { SCRIPT_TARGET, TYPESLANG_BINDING_HEADER } from "./constants.ts";
 import { createEnumToStringMapFunction } from "./utils.ts";
 
 let typeCounter = 0;
@@ -18,6 +18,10 @@ export function createTypeAliasDeclarationFromString(typeNamePrefix: string, typ
 
 export function isAsConstExpression(node: ts.Node): node is ts.AsExpression {
   return ts.isAsExpression(node) && ts.isConstTypeReference(node.type);
+}
+
+export function isBindingSourceFile(sourceFile: ts.SourceFile): boolean {
+  return sourceFile.isDeclarationFile && sourceFile.text.startsWith(TYPESLANG_BINDING_HEADER);
 }
 
 const kindStringMapper = createEnumToStringMapFunction(ts.SyntaxKind);
