@@ -7,11 +7,13 @@ import { hasTypeProperty, mapTypeName } from "./typeUtils.ts";
 import { isPointerCastExpression } from "./customNodes.ts";
 import { createTypeAliasDeclarationFromString, isAsConstExpression, nodeKindString } from "../tsUtils.ts";
 import { EmitError } from "./emitError.ts";
+import { mapModuleName } from "./mapModuleName.ts";
 
 export class EmitContext {
   private _typeChecker: ts.TypeChecker;
 
   private _sourceFileStack = new Stack<ts.SourceFile>();
+  private _moduleNameStack = new Stack<string>();
   private _outputStack = new Stack<StringBuilder>([new StringBuilder()]);
   private _scopeStack = new Stack<VariableScope>([new VariableScope(this)]);
 
@@ -39,12 +41,24 @@ export class EmitContext {
     return fileName;
   }
 
-  public pushSourceFile(sourceFile: ts.SourceFile): void {
+  public pushSourceFile(sourceFile: ts.SourceFile, moduleName: string): void {
+    const isRoot = this._sourceFileStack.isEmpty;
+
     this._sourceFileStack.push(sourceFile);
+    this._moduleNameStack.push(mapModuleName(moduleName));
+
+    if (!isRoot) {
+      this.pushScope();
+    }
   }
 
   public popSourceFile(): void {
+    this._moduleNameStack.pop();
     this._sourceFileStack.pop();
+
+    if (!this._sourceFileStack.isEmpty) {
+      this.popScope();
+    }
   }
 
   public get output(): StringBuilder {
@@ -71,8 +85,26 @@ export class EmitContext {
     return this._scopeStack.top;
   }
 
-  public declare(name: string, type: string): void {
-    this.scope.declare(name, type);
+  public mapName(name: string): string {
+    if (!this._moduleNameStack.isEmpty) {
+      name = this._moduleNameStack.top + name;
+    }
+
+    return name;
+  }
+
+  public mapVariableName(node: ts.Node, name: string): string {
+    const result = this.scope.mapName(name);
+
+    if (result === null) {
+      throw new EmitError(this, node, `Unknown variable name "${name}".`);
+    }
+
+    return result;
+  }
+
+  public declare(name: string, type: string, moduleName = ""): void {
+    this.scope.declare(name, type, mapModuleName(moduleName));
   }
 
   public set(name: string): void {

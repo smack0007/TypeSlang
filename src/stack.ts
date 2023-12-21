@@ -24,8 +24,16 @@ export class Stack<T> {
     return this._data.pop() as T;
   }
 
+  public get length(): number {
+    return this._data.length;
+  }
+
+  public get isEmpty(): boolean {
+    return this._data.length <= 0;
+  }
+
   public get top(): T {
-    if (this._data.length <= 0) {
+    if (this.isEmpty) {
       throw new Error("Stack empty.");
     }
     return this._data[this._data.length - 1];

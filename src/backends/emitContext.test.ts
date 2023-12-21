@@ -11,7 +11,7 @@ function createEmitContext(sourceText: string): EmitContext {
 
   const defaultCompilerHost = ts.createCompilerHost({});
 
-  const customCompilerHost: ts.CompilerHost = {
+  const compilerHost: ts.CompilerHost = {
     getSourceFile: (fileName, languageVersion) => {
       if (fileName === FILENAME) {
         return sourceFile;
@@ -35,10 +35,10 @@ function createEmitContext(sourceText: string): EmitContext {
     {
       target: SCRIPT_TARGET,
     },
-    customCompilerHost,
+    compilerHost,
   );
 
-  return new EmitContext(program.getTypeChecker(), sourceFile);
+  return new EmitContext(compilerHost, program);
 }
 
 test("should work", () => {

@@ -23,6 +23,9 @@ export function emit(context: EmitContext, sourceFile: ts.SourceFile): EmitResul
   const forwardDeclaraedStructs = context.output.insertPlaceholder();
   forwardDeclaraedStructs.appendLine("// Structs");
 
+  // TODO: Forward declaration is basically broken in it's current state as context.mapName doesn't
+  // return the correct name when it's later called. Should now be able to just directly output the
+  // forward declaration in emitFunctionDeclaration instead of having to have a 2nd run.
   const fowardDeclaredFunctions = context.output.insertPlaceholder();
   fowardDeclaredFunctions.appendLine("// Functions");
 
@@ -50,10 +53,29 @@ export function emit(context: EmitContext, sourceFile: ts.SourceFile): EmitResul
 function emitPreamble(context: EmitContext): void {
   context.output.appendLine("#include <TypeSlang/runtime.cpp>");
   context.output.appendLine("using namespace JS;");
+
+  context.declare("console", "Console");
 }
 
-function emitSourceFile(context: EmitContext, sourceFile: ts.SourceFile): void {
-  context.pushSourceFile(sourceFile);
+interface EmitSourceFileOptions {
+  moduleName?: string;
+}
+
+function emitSourceFile(context: EmitContext, sourceFile: ts.SourceFile, options: EmitSourceFileOptions = {}): void {
+  context.pushSourceFile(sourceFile, options.moduleName ?? "");
+  // HACK: Need a better way of getting all the globals defined up front.
+  for (const statement of sourceFile.statements) {
+    switch (statement.kind) {
+      case ts.SyntaxKind.FunctionDeclaration:
+        {
+          const functionName = ((statement as ts.FunctionDeclaration).name as ts.Identifier).text;
+          context.declare(functionName, "function", options.moduleName ?? "");
+          context.set(functionName);
+        }
+        break;
+    }
+  }
+
   for (const statement of sourceFile.statements) {
     emitTopLevelStatement(context, statement);
   }
@@ -106,7 +128,9 @@ function emitFunctionDeclaration(
     throw new EmitError(context, functionDeclaration, `Expected function name to be defined.`);
   }
 
-  context.output.append(`${returnType} ${functionDeclaration.name.escapedText}(`);
+  const functionName = context.mapName(functionDeclaration.name.text);
+
+  context.output.append(`${returnType} ${functionName}(`);
 
   for (let i = 0; i < functionDeclaration.parameters.length; i++) {
     if (i !== 0) {
@@ -132,8 +156,9 @@ function emitFunctionDeclaration(
     context.output.append(" ");
 
     context.functions.push(functionDeclaration);
-    context.declare(functionDeclaration.name.text, "function");
-    context.set(functionDeclaration.name.text);
+    // TODO: Reactivate this once the hack in emitSourceFile is fixed.
+    // context.declare(functionName, "function");
+    // context.set(functionName);
 
     context.pushScope();
     for (const parameter of functionDeclaration.parameters) {
@@ -152,35 +177,82 @@ function emitFunctionDeclaration(
 }
 
 function emitImportDeclaration(context: EmitContext, importDeclaration: ts.ImportDeclaration): void {
-  if (ts.isStringLiteral(importDeclaration.moduleSpecifier)) {
-    const moduleName = ts.resolveModuleName(
-      importDeclaration.moduleSpecifier.text,
-      context.sourceFile.fileName,
-      context.program.getCompilerOptions(),
-      context.compilerHost,
+  let success = false;
+
+  // NOTE: According to the docs this should never happen.
+  if (!ts.isStringLiteral(importDeclaration.moduleSpecifier)) {
+    throw new EmitError(
+      context,
+      importDeclaration,
+      `Failed to emit ${nodeKindString(importDeclaration)} in ${emitImportDeclaration.name}.`,
     );
+  }
 
-    if (moduleName.resolvedModule) {
-      // If imported via a module name
-      if (moduleName.resolvedModule.isExternalLibraryImport) {
+  const moduleName = ts.resolveModuleName(
+    importDeclaration.moduleSpecifier.text,
+    context.sourceFile.fileName,
+    context.program.getCompilerOptions(),
+    context.compilerHost,
+  );
+
+  if (moduleName.resolvedModule) {
+    // If imported via a module name
+    if (moduleName.resolvedModule.isExternalLibraryImport) {
+    } else {
+      // Imported via a file path
+      const importedSourceFile = context.program.getSourceFile(moduleName.resolvedModule.resolvedFileName);
+
+      if (importedSourceFile) {
+        emitSourceFile(context, importedSourceFile, {
+          moduleName: importDeclaration.moduleSpecifier.text,
+        });
+        success = true;
       } else {
-        // Imported via a file path
-        const importedSourceFile = context.program.getSourceFile(moduleName.resolvedModule.resolvedFileName);
-
-        if (importedSourceFile) {
-          // TODO: We need to namespace the file somehow.
-          emitSourceFile(context, importedSourceFile);
-          return;
-        }
+        throw new EmitError(
+          context,
+          importDeclaration,
+          `Failed to import "${moduleName.resolvedModule.resolvedFileName}".`,
+        );
       }
     }
   }
 
-  throw new EmitError(
-    context,
-    importDeclaration,
-    `Failed to emit ${nodeKindString(importDeclaration)} in ${emitImportDeclaration.name}.`,
-  );
+  if (!success) {
+    throw new EmitError(
+      context,
+      importDeclaration,
+      `Failed to emit ${nodeKindString(importDeclaration)} in ${emitImportDeclaration.name}.`,
+    );
+  }
+
+  if (!importDeclaration.importClause) {
+    return;
+  }
+
+  // TODO: Handle namespace import
+  if (importDeclaration.importClause.name) {
+    throw new EmitError(
+      context,
+      importDeclaration.importClause.name,
+      `Failed to emit ${nodeKindString(importDeclaration.importClause.name)} in ${emitImportDeclaration.name}.`,
+    );
+  }
+
+  if (importDeclaration.importClause.namedBindings) {
+    if (ts.isNamedImports(importDeclaration.importClause.namedBindings)) {
+      for (const element of importDeclaration.importClause.namedBindings.elements) {
+        context.declare(element.name.text, context.getTypeName(element), importDeclaration.moduleSpecifier.text);
+      }
+    } else {
+      throw new EmitError(
+        context,
+        importDeclaration.importClause.namedBindings,
+        `Failed to emit ${nodeKindString(importDeclaration.importClause.namedBindings)} in ${
+          emitImportDeclaration.name
+        }.`,
+      );
+    }
+  }
 }
 
 function emitInterfaceDeclaration(context: EmitContext, interfaceDeclaration: ts.InterfaceDeclaration): void {
@@ -222,7 +294,7 @@ function emitTypeAliasDeclaration(
     for (const member of (typeAliasDeclaration.type as ts.TypeLiteralNode).members) {
       const memberType = context.getTypeName(member);
       context.output.append(`${memberType} `);
-      emitIdentifier(context, member.name as ts.Identifier);
+      emitIdentifier(context, member.name as ts.Identifier, { shouldNotMapName: true });
       context.output.appendLine(";");
     }
 
@@ -394,20 +466,26 @@ function emitVariableDeclarationList(
   const { isGlobal = false, isConst = false } = options;
 
   for (const variableDeclaration of variableDeclarationList.declarations) {
+    if (!ts.isIdentifier(variableDeclaration.name)) {
+      throw new EmitError(
+        context,
+        variableDeclaration,
+        `Expected ${nodeKindString(variableDeclaration.name)} to be Identifier.`,
+      );
+    }
+
     const type = context.getTypeName(variableDeclaration, { initializer: variableDeclaration.initializer });
     context.emittingVariableDeclarationType = type;
 
+    context.declare(variableDeclaration.name.text, type);
     context.output.append(type);
     context.output.append(" ");
-    emitIdentifier(context, variableDeclaration.name as ts.Identifier);
-
-    context.declare(variableDeclaration.name.getText(), type);
+    emitIdentifier(context, variableDeclaration.name);
 
     if (variableDeclaration.initializer) {
+      context.set(variableDeclaration.name.text);
       context.output.append(" = ");
       emitExpression(context, variableDeclaration.initializer);
-
-      context.set(variableDeclaration.name.getText());
     }
 
     context.emittingVariableDeclarationType = null;
@@ -768,7 +846,8 @@ function emitPropertyAccessExpression(
   } else {
     context.output.append(".");
   }
-  emitMemberName(context, propertyAccessExpression.name);
+
+  emitIdentifier(context, propertyAccessExpression.name, { shouldNotMapName: true });
 
   // NOTE: Properties are not supported in C++ so we have to call a method.
   if (
@@ -779,12 +858,22 @@ function emitPropertyAccessExpression(
   }
 }
 
-function emitMemberName(context: EmitContext, memberName: ts.MemberName): void {
-  emitIdentifier(context, memberName);
+interface EmitIdentifierOptions {
+  shouldNotMapName?: boolean;
 }
 
-function emitIdentifier(context: EmitContext, identifier: ts.Identifier | ts.PrivateIdentifier): void {
-  context.output.append(identifier.escapedText as string);
+function emitIdentifier(
+  context: EmitContext,
+  identifier: ts.Identifier | ts.PrivateIdentifier,
+  options: EmitIdentifierOptions = {},
+): void {
+  let identifierName = identifier.text;
+
+  if (!options.shouldNotMapName) {
+    identifierName = context.mapVariableName(identifier, identifierName);
+  }
+
+  context.output.append(identifierName);
 }
 
 function emitNumericLiteral(context: EmitContext, numcericLiteral: ts.NumericLiteral): void {
@@ -804,7 +893,7 @@ function emitObjectLiteralExpression(context: EmitContext, objectLiteralExpressi
     }
 
     context.output.append(".");
-    emitIdentifier(context, property.name as ts.Identifier);
+    emitIdentifier(context, property.name as ts.Identifier, { shouldNotMapName: true });
     context.output.append(" = ");
 
     if (property.kind === ts.SyntaxKind.PropertyAssignment) {
